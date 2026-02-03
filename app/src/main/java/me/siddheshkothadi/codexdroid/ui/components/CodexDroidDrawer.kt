@@ -1,5 +1,6 @@
 package me.siddheshkothadi.codexdroid.ui.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -36,6 +37,7 @@ import me.siddheshkothadi.codexdroid.codex.ConnectionStatus
 import me.siddheshkothadi.codexdroid.data.local.Connection
 import me.siddheshkothadi.codexdroid.ui.history.HistoryUiState
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CodexDroidDrawerContent(
     historyState: HistoryUiState,

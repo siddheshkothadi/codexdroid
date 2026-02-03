@@ -34,7 +34,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import dev.jeziellago.compose.markdowntext.MarkdownText
+import com.halilibo.richtext.commonmark.Markdown
+import com.halilibo.richtext.ui.material3.RichText
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import me.siddheshkothadi.codexdroid.codex.*
@@ -875,6 +876,7 @@ fun ThreadItemBubble(item: ThreadItem) {
     val isUser = item is ThreadItem.UserMessage
     val alignment = if (isUser) Alignment.End else Alignment.Start
     val background = if (isUser) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+    val isFullWidthItem = !isUser && item is ThreadItem.AgentMessage
     val isCardLikeItem =
         item is ThreadItem.CommandExecution ||
             item is ThreadItem.Reasoning ||
@@ -895,9 +897,15 @@ fun ThreadItemBubble(item: ThreadItem) {
                 .clip(RoundedCornerShape(16.dp))
                 .background(background)
                 .padding(
-                    if (isCardLikeItem) 0.dp else 14.dp
+                    if (isUser) 14.dp else 0.dp
                 )
-                .widthIn(max = if (isUser) 280.dp else 340.dp)
+                .then(
+                    when {
+                        isUser -> Modifier.widthIn(max = 280.dp)
+                        isFullWidthItem || isCardLikeItem -> Modifier.fillMaxWidth()
+                        else -> Modifier.widthIn(max = 340.dp)
+                    }
+                )
         ) {
             when (item) {
                 is ThreadItem.UserMessage -> {
@@ -907,9 +915,9 @@ fun ThreadItemBubble(item: ThreadItem) {
                     )
                 }
                 is ThreadItem.AgentMessage -> {
-                    MarkdownText(
-                        markdown = item.text
-                    )
+                    RichText(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
+                        Markdown(item.text)
+                    }
                 }
                 is ThreadItem.Reasoning -> ReasoningItem(item)
                 is ThreadItem.PlanUpdate -> PlanUpdateItem(item)
@@ -957,16 +965,18 @@ fun ReasoningItem(item: ThreadItem.Reasoning) {
         if (expanded) {
             Column(modifier = Modifier.padding(12.dp)) {
                 item.summary.forEach {
-                    MarkdownText(
-                        markdown = it,
-                        style = MaterialTheme.typography.bodySmall.copy(fontStyle = FontStyle.Italic)
-                    )
+                    ProvideTextStyle(MaterialTheme.typography.bodySmall.copy(fontStyle = FontStyle.Italic)) {
+                        RichText(modifier = Modifier.fillMaxWidth()) {
+                            Markdown(it)
+                        }
+                    }
                 }
                 item.content.forEach {
-                    MarkdownText(
-                        markdown = it,
-                        style = MaterialTheme.typography.bodySmall.copy(fontStyle = FontStyle.Italic)
-                    )
+                    ProvideTextStyle(MaterialTheme.typography.bodySmall.copy(fontStyle = FontStyle.Italic)) {
+                        RichText(modifier = Modifier.fillMaxWidth()) {
+                            Markdown(it)
+                        }
+                    }
                 }
             }
         }
@@ -1124,10 +1134,11 @@ fun PlanUpdateItem(item: ThreadItem.PlanUpdate) {
 
             Column(modifier = Modifier.padding(12.dp)) {
                 if (markdown.isNotBlank()) {
-                    MarkdownText(
-                        markdown = markdown,
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                    ProvideTextStyle(MaterialTheme.typography.bodySmall) {
+                        RichText(modifier = Modifier.fillMaxWidth()) {
+                            Markdown(markdown)
+                        }
+                    }
                 }
             }
         }
@@ -1307,10 +1318,11 @@ private fun InfoItem(id: String, title: String, body: String) {
         if (expanded) {
             Column(modifier = Modifier.padding(12.dp)) {
                 if (body.isNotBlank()) {
-                    MarkdownText(
-                        markdown = body,
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                    ProvideTextStyle(MaterialTheme.typography.bodySmall) {
+                        RichText(modifier = Modifier.fillMaxWidth()) {
+                            Markdown(body)
+                        }
+                    }
                 }
             }
         }

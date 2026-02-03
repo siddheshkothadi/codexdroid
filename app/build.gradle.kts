@@ -73,7 +73,9 @@ dependencies {
 
     implementation(libs.tink.android)
     implementation(libs.androidx.datastore.preferences)
-    implementation(libs.compose.markdown)
+
+    implementation("com.halilibo.compose-richtext:richtext-ui-material3:1.0.0-alpha02")
+    implementation("com.halilibo.compose-richtext:richtext-commonmark:1.0.0-alpha02")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

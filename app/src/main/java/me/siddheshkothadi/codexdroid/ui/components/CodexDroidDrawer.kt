@@ -34,6 +34,7 @@ import androidx.compose.foundation.border
 import androidx.compose.ui.text.AnnotatedString
 import me.siddheshkothadi.codexdroid.codex.Thread
 import me.siddheshkothadi.codexdroid.codex.ConnectionStatus
+import me.siddheshkothadi.codexdroid.codex.TurnStatus
 import me.siddheshkothadi.codexdroid.data.local.Connection
 import me.siddheshkothadi.codexdroid.ui.history.HistoryUiState
 
@@ -175,6 +176,10 @@ fun CodexDroidDrawerContent(
                                 if (!isCollapsed) {
                                     val threads = grouped[cwd].orEmpty()
                                     items(threads, key = { it.id }) { thread ->
+                                        val hasRunningTurn =
+                                            remember(thread.turns) {
+                                                thread.turns.any { turn -> turn.status == TurnStatus.inProgress }
+                                            }
                                         NavigationDrawerItem(
                                             label = {
                                                 Text(
@@ -183,6 +188,17 @@ fun CodexDroidDrawerContent(
                                                     overflow = TextOverflow.Ellipsis
                                                 )
                                             },
+                                            badge =
+                                                if (hasRunningTurn) {
+                                                    {
+                                                        CircularProgressIndicator(
+                                                            modifier = Modifier.size(14.dp),
+                                                            strokeWidth = 2.dp
+                                                        )
+                                                    }
+                                                } else {
+                                                    null
+                                                },
                                             selected = thread.id == activeThreadId,
                                             onClick = { onThreadClick(thread) },
                                             modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)

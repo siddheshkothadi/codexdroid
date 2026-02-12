@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CodexDroid Harness Report",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "suite": { "type": "string" },
+    "generated_at": { "type": "string" },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["total", "passed", "failed"]
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "scenario_id": { "type": "string" },
+          "status": { "type": "string", "enum": ["pass", "fail"] },
+          "latency_ms": { "type": "integer", "minimum": 0 },
+          "assertions": { "type": "array", "items": { "type": "string" } },
+          "failure_reason": { "type": ["string", "null"] },
+          "trace_ref": { "type": "string" }
+        },
+        "required": ["scenario_id", "status", "latency_ms", "assertions", "failure_reason", "trace_ref"]
+      }
+    }
+  },
+  "required": ["suite", "generated_at", "summary", "results"]
+}

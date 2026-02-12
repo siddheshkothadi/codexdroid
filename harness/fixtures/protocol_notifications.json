@@ -1,0 +1,64 @@
+{
+  "events": [
+    {
+      "method": "turn/started",
+      "params": {
+        "threadId": "thread-1",
+        "turn": {
+          "id": "turn-1",
+          "status": "inProgress",
+          "items": []
+        }
+      }
+    },
+    {
+      "method": "item/started",
+      "params": {
+        "threadId": "thread-1",
+        "turnId": "turn-1",
+        "item": {
+          "type": "agentMessage",
+          "id": "item-agent-1",
+          "text": ""
+        }
+      }
+    },
+    {
+      "method": "item/agentMessage/delta",
+      "params": {
+        "threadId": "thread-1",
+        "turnId": "turn-1",
+        "itemId": "item-agent-1",
+        "delta": "Hello"
+      }
+    },
+    {
+      "method": "turn/plan/updated",
+      "params": {
+        "turnId": "turn-1",
+        "explanation": "Execute in two steps.",
+        "plan": [
+          { "step": "Inspect state", "status": "completed" },
+          { "step": "Apply fix", "status": "inProgress" }
+        ]
+      }
+    },
+    {
+      "method": "turn/completed",
+      "params": {
+        "threadId": "thread-1",
+        "turn": {
+          "id": "turn-1",
+          "status": "completed",
+          "items": [
+            {
+              "type": "agentMessage",
+              "id": "item-agent-1",
+              "text": "Hello from Codex."
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

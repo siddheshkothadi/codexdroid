@@ -48,7 +48,15 @@ object CodexDroidNotifications {
         text: String,
         contentIntent: PendingIntent,
     ) {
-        if (!canPostNotifications(context)) return
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS,
+                ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
         ensureTurnChannel(context)
 
         val notification =
@@ -63,7 +71,11 @@ object CodexDroidNotifications {
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                 .build()
 
-        NotificationManagerCompat.from(context).notify(notificationId, notification)
+        try {
+            NotificationManagerCompat.from(context).notify(notificationId, notification)
+        } catch (_: SecurityException) {
+            // Best-effort only: permission can still be denied or revoked at runtime.
+        }
     }
 }
 

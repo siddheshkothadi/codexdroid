@@ -1,0 +1,32 @@
+{
+  "suite": "protocol",
+  "description": "Protocol-focused checks for Codex WS/router behavior.",
+  "scenarios": [
+    {
+      "id": "protocol.notifications_methods_present",
+      "kind": "fixture_methods_include",
+      "file": "harness/fixtures/protocol_notifications.json",
+      "methods": [
+        "turn/started",
+        "item/agentMessage/delta",
+        "turn/plan/updated",
+        "turn/completed"
+      ]
+    },
+    {
+      "id": "protocol.server_requests_has_core_types",
+      "kind": "fixture_request_methods_include",
+      "file": "harness/fixtures/server_requests.json",
+      "methods": [
+        "tool/requestApproval",
+        "item/tool/requestUserInput"
+      ]
+    },
+    {
+      "id": "protocol.plan_update_without_threadid_fixture",
+      "kind": "fixture_event_has_missing_thread_id",
+      "file": "harness/fixtures/protocol_notifications.json",
+      "method": "turn/plan/updated"
+    }
+  ]
+}

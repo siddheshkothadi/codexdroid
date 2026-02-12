@@ -16,3 +16,8 @@
 .externalNativeBuild
 .cxx
 local.properties
+/app/release/
+/harness/reports/*.json
+!/harness/reports/schema.json
+/harness/reports/*.md
+__pycache__/

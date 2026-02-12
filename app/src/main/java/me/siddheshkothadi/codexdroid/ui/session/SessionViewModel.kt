@@ -16,11 +16,14 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import me.siddheshkothadi.codexdroid.codex.*
+import me.siddheshkothadi.codexdroid.codex.requests.ApprovalPendingRequest
+import me.siddheshkothadi.codexdroid.codex.requests.InMemoryPendingRequestQueue
+import me.siddheshkothadi.codexdroid.codex.requests.PendingRequestParser
+import me.siddheshkothadi.codexdroid.codex.requests.PendingRequestQueue
+import me.siddheshkothadi.codexdroid.codex.requests.UnknownPendingRequest
+import me.siddheshkothadi.codexdroid.codex.requests.UserInputPendingRequest
 import me.siddheshkothadi.codexdroid.data.local.Connection
 import me.siddheshkothadi.codexdroid.data.repository.ConnectionRepository
 import me.siddheshkothadi.codexdroid.data.repository.ThreadRepository
@@ -48,39 +51,14 @@ data class SessionUiState(
     val pendingUserMessage: String? = null,
     // Workspace key for new threads on a shared app-server (maps to Codex thread "cwd").
     val selectedCwd: String? = null,
-    val pendingApproval: PendingApproval? = null,
-    val pendingUserInput: PendingUserInput? = null,
+    val pendingApproval: ApprovalPendingRequest? = null,
+    val pendingUserInput: UserInputPendingRequest? = null,
+    val pendingUnknownRequest: UnknownPendingRequest? = null,
     val models: List<ModelOptionUi> = emptyList(),
     val skills: List<SkillOptionUi> = emptyList(),
     val selectedModelId: String? = null,
     val selectedEffort: String? = null,
     val controlsError: String? = null,
-)
-
-data class PendingApproval(
-    val requestId: Long,
-    val method: String,
-    val params: JsonElement? = null,
-)
-
-data class PendingUserInput(
-    val requestId: Long,
-    val threadId: String? = null,
-    val turnId: String? = null,
-    val itemId: String? = null,
-    val questions: List<UserInputQuestion> = emptyList(),
-)
-
-data class UserInputQuestion(
-    val id: String,
-    val header: String = "",
-    val question: String = "",
-    val options: List<UserInputOption> = emptyList(),
-)
-
-data class UserInputOption(
-    val label: String,
-    val description: String,
 )
 
 data class ModelOptionUi(
@@ -122,8 +100,7 @@ class SessionViewModel @Inject constructor(
     private var autoSelectedConnectionId: String? = null
     private var didInitialHistorySyncForConnectionId: String? = null
     private var lastControlsKey: String? = null
-    private val approvalQueue = ArrayDeque<PendingApproval>()
-    private val userInputQueue = ArrayDeque<PendingUserInput>()
+    private val pendingRequestQueue: PendingRequestQueue = InMemoryPendingRequestQueue()
 
     private val _uiState = MutableStateFlow(SessionUiState())
     val uiState: StateFlow<SessionUiState> = _uiState.asStateFlow()
@@ -146,13 +123,23 @@ class SessionViewModel @Inject constructor(
     fun setSelectedModelId(modelId: String?) {
         val normalized = modelId?.takeIf { v -> v.isNotBlank() }
         _uiState.update { it.copy(selectedModelId = normalized) }
-        persistThreadPreferences(model = normalized, effort = null)
     }
 
     fun setSelectedEffort(effort: String?) {
         val normalized = effort?.takeIf { v -> v.isNotBlank() }
         _uiState.update { it.copy(selectedEffort = normalized) }
-        persistThreadPreferences(model = null, effort = normalized)
+    }
+
+    fun saveControlsSelection(modelId: String?, effort: String?) {
+        val normalizedModel = modelId?.takeIf { it.isNotBlank() }
+        val normalizedEffort = effort?.takeIf { it.isNotBlank() }
+        _uiState.update {
+            it.copy(
+                selectedModelId = normalizedModel,
+                selectedEffort = normalizedEffort,
+            )
+        }
+        persistThreadPreferences(model = normalizedModel, effort = normalizedEffort)
     }
 
     private fun persistThreadPreferences(model: String?, effort: String?) {
@@ -161,8 +148,8 @@ class SessionViewModel @Inject constructor(
         viewModelScope.launch {
             val updated =
                 thread.copy(
-                    clientModel = model ?: thread.clientModel,
-                    clientEffort = effort ?: thread.clientEffort,
+                    clientModel = model,
+                    clientEffort = effort,
                 )
             threadRepository.upsertThread(conn.id, updated)
         }
@@ -184,9 +171,11 @@ class SessionViewModel @Inject constructor(
         try {
             val modelsResp = runCatching { apiService.listModels(connection.baseUrl, connection.secret) }.getOrNull()
             val skillsResp = runCatching { apiService.listSkills(connection.baseUrl, connection.secret, cwd) }.getOrNull()
+            val configResp = runCatching { apiService.readConfig(connection.baseUrl, connection.secret) }.getOrNull()
 
             val models = modelsResp?.result?.let { parseModels(it) }.orEmpty()
             val skills = skillsResp?.result?.let { parseSkills(it) }.orEmpty()
+            val (configModel, configEffort) = configResp?.result?.let { parseConfigPreferences(it) } ?: (null to null)
 
             val error =
                 when {
@@ -202,28 +191,29 @@ class SessionViewModel @Inject constructor(
                 val threadPreferredModel =
                     next.currentThread?.clientModel
                         ?.takeIf { it.isNotBlank() }
-                        ?: next.currentThread?.modelProvider?.takeIf { it.isNotBlank() }
+                        ?: configModel
 
                 val resolvedModelId =
-                    when {
-                        !next.selectedModelId.isNullOrBlank() && models.any { it.id == next.selectedModelId } ->
-                            next.selectedModelId
-                        !threadPreferredModel.isNullOrBlank() ->
-                            models.firstOrNull { it.id == threadPreferredModel || it.model == threadPreferredModel }?.id
-                        else ->
-                            models.firstOrNull { it.isDefault }?.id ?: models.firstOrNull()?.id
-                    }
+                    resolveModelId(models, next.selectedModelId)
+                        ?: resolveModelId(models, threadPreferredModel)
+                        ?: models.firstOrNull { it.isDefault }?.id
+                        ?: models.firstOrNull()?.id
 
                 if (resolvedModelId != next.selectedModelId) {
                     next = next.copy(selectedModelId = resolvedModelId)
                 }
 
-                val selectedModel = next.selectedModelId?.let { id -> models.firstOrNull { it.id == id } }
+                val selectedModel =
+                    next.selectedModelId?.let { id ->
+                        models.firstOrNull { it.id == id || it.model == id }
+                    }
                 val supportedEfforts =
                     selectedModel?.supportedReasoningEfforts?.map { it.reasoningEffort }?.filter { it.isNotBlank() }.orEmpty()
                 val defaultEffort = selectedModel?.defaultReasoningEffort?.takeIf { it.isNotBlank() }
 
-                val threadPreferredEffort = next.currentThread?.clientEffort?.takeIf { it.isNotBlank() }
+                val threadPreferredEffort =
+                    next.currentThread?.clientEffort?.takeIf { it.isNotBlank() }
+                        ?: configEffort
                 val resolvedEffort =
                     when {
                         !next.selectedEffort.isNullOrBlank() &&
@@ -231,9 +221,11 @@ class SessionViewModel @Inject constructor(
                             next.selectedEffort
                         threadPreferredEffort != null && (supportedEfforts.isEmpty() || threadPreferredEffort in supportedEfforts) ->
                             threadPreferredEffort
+                        defaultEffort != null && (supportedEfforts.isEmpty() || defaultEffort in supportedEfforts) ->
+                            defaultEffort
                         supportedEfforts.isNotEmpty() ->
                             supportedEfforts.firstOrNull()
-                        else -> defaultEffort
+                        else -> null
                     }
 
                 if (resolvedEffort != next.selectedEffort) {
@@ -270,24 +262,11 @@ class SessionViewModel @Inject constructor(
             val description = readString(obj, "description")
             val isDefault = readBoolean(obj, "isDefault", "is_default")
 
-            val supported =
-                (obj["supportedReasoningEfforts"] as? JsonArray)?.jsonArray
-                    ?: (obj["supported_reasoning_efforts"] as? JsonArray)?.jsonArray
-            val supportedEfforts =
-                supported
-                    ?.mapNotNull { e ->
-                        val eo = e as? JsonObject ?: return@mapNotNull null
-                        val effort = readString(eo, "reasoningEffort", "reasoning_effort")
-                        if (effort.isBlank()) return@mapNotNull null
-                        ReasoningEffortUi(
-                            reasoningEffort = effort,
-                            description = readString(eo, "description"),
-                        )
-                    }
-                    .orEmpty()
+            val supportedEfforts = parseReasoningEfforts(obj)
 
             val defaultEffort =
-                readString(obj, "defaultReasoningEffort", "default_reasoning_effort").takeIf { it.isNotBlank() }
+                readDefaultEffort(obj)
+                    .takeIf { it.isNotBlank() }
 
             ModelOptionUi(
                 id = id,
@@ -298,32 +277,141 @@ class SessionViewModel @Inject constructor(
                 defaultReasoningEffort = defaultEffort,
                 isDefault = isDefault,
             )
-        }
+        }.distinctBy { it.id }
     }
 
     private fun parseSkills(result: JsonElement): List<SkillOptionUi> {
-        val root = result as? JsonObject
-        val items =
-            when {
-                root != null -> {
-                    val data = root["data"] ?: root["skills"] ?: root["items"]
-                    (data as? JsonArray)?.jsonArray
-                }
-                result is JsonArray -> result.jsonArray
-                else -> null
-            } ?: return emptyList()
+        val skillObjects = mutableListOf<JsonObject>()
 
-        return items.mapNotNull { element ->
-            val obj = element as? JsonObject ?: return@mapNotNull null
-            val name = readString(obj, "name")
-            val path = readString(obj, "path")
-            if (name.isBlank() || path.isBlank()) return@mapNotNull null
-            SkillOptionUi(
-                name = name,
-                path = path,
-                description = readString(obj, "description").takeIf { it.isNotBlank() },
-            )
+        fun collectSkillObjects(array: JsonArray) {
+            array.forEach { element ->
+                val obj = element as? JsonObject ?: return@forEach
+                val nestedSkills = obj["skills"] as? JsonArray
+                if (nestedSkills != null) {
+                    nestedSkills.forEach { nested ->
+                        val nestedObj = nested as? JsonObject ?: return@forEach
+                        skillObjects.add(nestedObj)
+                    }
+                    return@forEach
+                }
+                skillObjects.add(obj)
+            }
         }
+
+        when (result) {
+            is JsonArray -> collectSkillObjects(result)
+            is JsonObject -> {
+                listOf(result["skills"], result["items"], result["data"]).forEach { candidate ->
+                    val arr = candidate as? JsonArray ?: return@forEach
+                    collectSkillObjects(arr)
+                }
+            }
+            else -> Unit
+        }
+
+        return skillObjects
+            .mapNotNull { obj ->
+                val name = readString(obj, "name")
+                if (name.isBlank()) return@mapNotNull null
+                SkillOptionUi(
+                    name = name,
+                    path = readString(obj, "path"),
+                    description = readString(obj, "description").takeIf { it.isNotBlank() },
+                )
+            }
+            .distinctBy { canonicalSkillKey(it) }
+    }
+
+    private fun parseConfigPreferences(result: JsonElement): Pair<String?, String?> {
+        val root = result as? JsonObject ?: return null to null
+        val config =
+            readObject(root, "config", "effectiveConfig", "effective_config", "data")
+                ?: root
+
+        val model =
+            readString(config, "model")
+                .takeIf { it.isNotBlank() }
+        val effort =
+            readString(config, "model_reasoning_effort", "modelReasoningEffort")
+                .takeIf { it.isNotBlank() }
+                ?: readObject(config, "model_reasoning_effort", "modelReasoningEffort")
+                    ?.let { effortObj ->
+                        readString(effortObj, "effort", "reasoningEffort", "reasoning_effort")
+                            .takeIf { it.isNotBlank() }
+                    }
+
+        return model to effort
+    }
+
+    private fun parseReasoningEfforts(model: JsonObject): List<ReasoningEffortUi> {
+        val arrays =
+            listOf(
+                model["supportedReasoningEfforts"],
+                model["supported_reasoning_efforts"],
+                model["reasoningEffort"],
+                model["reasoning_effort"],
+            ).mapNotNull { it as? JsonArray }
+        if (arrays.isEmpty()) return emptyList()
+
+        return arrays
+            .flatMap { arr ->
+                arr.mapNotNull { entry ->
+                    when (entry) {
+                        is JsonObject -> {
+                            val effort =
+                                readString(entry, "reasoningEffort", "reasoning_effort", "effort")
+                            if (effort.isBlank()) return@mapNotNull null
+                            ReasoningEffortUi(
+                                reasoningEffort = effort,
+                                description = readString(entry, "description"),
+                            )
+                        }
+                        is JsonPrimitive -> {
+                            val effort = readPrimitiveString(entry)
+                            if (effort.isBlank()) return@mapNotNull null
+                            ReasoningEffortUi(reasoningEffort = effort)
+                        }
+                        else -> null
+                    }
+                }
+            }
+            .distinctBy { it.reasoningEffort.lowercase() }
+    }
+
+    private fun readDefaultEffort(model: JsonObject): String {
+        val scalar =
+            readString(
+                model,
+                "defaultReasoningEffort",
+                "default_reasoning_effort",
+                "defaultEffort",
+                "default_effort",
+            )
+        if (scalar.isNotBlank()) return scalar
+
+        val nested =
+            (model["defaultReasoningEffort"] as? JsonObject)
+                ?: (model["default_reasoning_effort"] as? JsonObject)
+                ?: (model["defaultEffort"] as? JsonObject)
+                ?: (model["default_effort"] as? JsonObject)
+                ?: return ""
+        return readString(nested, "reasoningEffort", "reasoning_effort", "effort")
+    }
+
+    private fun resolveModelId(models: List<ModelOptionUi>, candidate: String?): String? {
+        val target = candidate?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        return models.firstOrNull { it.id == target || it.model == target }?.id
+    }
+
+    private fun canonicalSkillKey(skill: SkillOptionUi): String {
+        val normalizedName = skill.name.trim().lowercase()
+        val normalizedPath = skill.path.trim().lowercase()
+        return if (normalizedPath.isBlank()) normalizedName else "$normalizedName|$normalizedPath"
+    }
+
+    private fun readPrimitiveString(value: JsonElement?): String {
+        val primitive = value as? JsonPrimitive ?: return ""
+        return runCatching { primitive.content }.getOrNull()?.trim().orEmpty()
     }
 
     private fun readString(obj: JsonObject, vararg keys: String): String {
@@ -333,6 +421,14 @@ class SessionViewModel @Inject constructor(
             if (s.isNotBlank()) return s
         }
         return ""
+    }
+
+    private fun readObject(obj: JsonObject, vararg keys: String): JsonObject? {
+        for (k in keys) {
+            val nested = obj[k] as? JsonObject ?: continue
+            return nested
+        }
+        return null
     }
 
     private fun readBoolean(obj: JsonObject, vararg keys: String): Boolean {
@@ -455,82 +551,20 @@ class SessionViewModel @Inject constructor(
     private fun observeServerRequests() {
         viewModelScope.launch {
             eventRouter.observeServerRequests().collect { req ->
-                when {
-                    req.method.contains("requestApproval") -> {
-                        approvalQueue.addLast(
-                            PendingApproval(
-                                requestId = req.id,
-                                method = req.method,
-                                params = req.params,
-                            )
-                        )
-                        maybeShowNextPending()
-                    }
-                    req.method == "item/tool/requestUserInput" -> {
-                        parseUserInputRequest(req)?.let {
-                            userInputQueue.addLast(it)
-                            maybeShowNextPending()
-                        }
-                    }
-                }
+                pendingRequestQueue.enqueue(PendingRequestParser.parse(req))
+                maybeShowNextPending()
             }
         }
     }
 
     private fun maybeShowNextPending() {
         _uiState.update { state ->
-            var next = state
-            if (next.pendingApproval == null && approvalQueue.isNotEmpty()) {
-                next = next.copy(pendingApproval = approvalQueue.removeFirst())
-            }
-            if (next.pendingUserInput == null && userInputQueue.isNotEmpty()) {
-                next = next.copy(pendingUserInput = userInputQueue.removeFirst())
-            }
-            next
+            state.copy(
+                pendingApproval = pendingRequestQueue.nextApproval(state.pendingApproval),
+                pendingUserInput = pendingRequestQueue.nextUserInput(state.pendingUserInput),
+                pendingUnknownRequest = pendingRequestQueue.nextUnknown(state.pendingUnknownRequest),
+            )
         }
-    }
-
-    private fun parseUserInputRequest(req: ServerRequest): PendingUserInput? {
-        val params = req.params as? JsonObject ?: return null
-        val threadId = params["threadId"]?.jsonPrimitive?.content
-        val turnId = params["turnId"]?.jsonPrimitive?.content
-        val itemId = params["itemId"]?.jsonPrimitive?.content
-        val questionsRaw = params["questions"] as? JsonArray
-        val questions =
-            questionsRaw
-                ?.jsonArray
-                ?.mapNotNull { entry ->
-                    val obj = entry as? JsonObject ?: return@mapNotNull null
-                    val id = obj["id"]?.jsonPrimitive?.content?.trim().orEmpty()
-                    if (id.isBlank()) return@mapNotNull null
-                    val header = obj["header"]?.jsonPrimitive?.content?.trim().orEmpty()
-                    val question = obj["question"]?.jsonPrimitive?.content?.trim().orEmpty()
-                    val optionsRaw = obj["options"] as? JsonArray
-                    val options =
-                        optionsRaw
-                            ?.jsonArray
-                            ?.mapNotNull { opt ->
-                                val o = opt as? JsonObject ?: return@mapNotNull null
-                                val label = o["label"]?.jsonPrimitive?.content?.trim().orEmpty()
-                                val description = o["description"]?.jsonPrimitive?.content?.trim().orEmpty()
-                                if (label.isBlank() && description.isBlank()) return@mapNotNull null
-                                UserInputOption(label = label, description = description)
-                            }
-                            .orEmpty()
-                    UserInputQuestion(id = id, header = header, question = question, options = options)
-                }
-                .orEmpty()
-                .filter { it.options.isNotEmpty() }
-
-        if (questions.isEmpty()) return null
-
-        return PendingUserInput(
-            requestId = req.id,
-            threadId = threadId,
-            turnId = turnId,
-            itemId = itemId,
-            questions = questions
-        )
     }
 
     fun decideApproval(decision: String) {
@@ -561,6 +595,11 @@ class SessionViewModel @Inject constructor(
                 maybeShowNextPending()
             }
         }
+    }
+
+    fun dismissUnknownRequest() {
+        _uiState.update { it.copy(pendingUnknownRequest = null) }
+        maybeShowNextPending()
     }
 
     // --- Actions ---
@@ -703,17 +742,26 @@ class SessionViewModel @Inject constructor(
                                 activeTurn?.status == TurnStatus.interrupted ||
                                 activeTurn?.status == TurnStatus.failed
 
+                        val threadChanged = state.currentThread?.id != t.id
                         var next =
                             state.copy(
                                 currentThread = t,
                                 selectedCwd = t.cwd.takeIf { it.isNotBlank() }
                             )
 
-                        if (next.selectedModelId.isNullOrBlank() && !t.clientModel.isNullOrBlank()) {
-                            next = next.copy(selectedModelId = t.clientModel)
-                        }
-                        if (next.selectedEffort.isNullOrBlank() && !t.clientEffort.isNullOrBlank()) {
-                            next = next.copy(selectedEffort = t.clientEffort)
+                        if (threadChanged) {
+                            next =
+                                next.copy(
+                                    selectedModelId = t.clientModel?.takeIf { it.isNotBlank() },
+                                    selectedEffort = t.clientEffort?.takeIf { it.isNotBlank() },
+                                )
+                        } else {
+                            if (next.selectedModelId.isNullOrBlank() && !t.clientModel.isNullOrBlank()) {
+                                next = next.copy(selectedModelId = t.clientModel)
+                            }
+                            if (next.selectedEffort.isNullOrBlank() && !t.clientEffort.isNullOrBlank()) {
+                                next = next.copy(selectedEffort = t.clientEffort)
+                            }
                         }
 
                         // Clear the local echo once the authoritative user message is present.
@@ -879,7 +927,16 @@ class SessionViewModel @Inject constructor(
     fun selectConnection(connection: Connection) {
         viewModelScope.launch {
             connectionRepository.updateLastUsed(connection.id)
-            _uiState.update { it.copy(currentThread = null, activeTurnId = null, isSending = false, pendingUserMessage = null) }
+            _uiState.update {
+                it.copy(
+                    currentThread = null,
+                    activeTurnId = null,
+                    isSending = false,
+                    pendingUserMessage = null,
+                    selectedModelId = null,
+                    selectedEffort = null,
+                )
+            }
         }
     }
 

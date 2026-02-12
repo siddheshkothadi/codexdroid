@@ -1,0 +1,45 @@
+{
+  "requests": [
+    {
+      "id": 9001,
+      "method": "tool/requestApproval",
+      "params": {
+        "tool": "apply_patch",
+        "reason": "File change requires approval"
+      }
+    },
+    {
+      "id": 9002,
+      "method": "item/tool/requestUserInput",
+      "params": {
+        "threadId": "thread-1",
+        "turnId": "turn-1",
+        "itemId": "item-2",
+        "questions": [
+          {
+            "id": "merge_policy",
+            "header": "Merge policy",
+            "question": "Choose a merge policy",
+            "options": [
+              {
+                "label": "Fast loop + guardrails",
+                "description": "Small required checks and fast merges"
+              },
+              {
+                "label": "Strict blocking gates",
+                "description": "Broader checks before merge"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 9003,
+      "method": "item/tool/unknown",
+      "params": {
+        "note": "Unknown request type to validate routing"
+      }
+    }
+  ]
+}

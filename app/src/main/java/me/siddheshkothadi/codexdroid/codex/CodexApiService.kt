@@ -1,9 +1,11 @@
 package me.siddheshkothadi.codexdroid.codex
 
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -97,11 +99,21 @@ class CodexApiService @Inject constructor(
         return client.send<EmptyParams, JsonElement>(CodexRequest("model/list", params = EmptyParams))
     }
 
+    suspend fun readConfig(baseUrl: String, secret: String?): CodexResponse<JsonElement> {
+        val client = clientManager.get(baseUrl, secret)
+        return client.send<EmptyParams, JsonElement>(CodexRequest("config/read", params = EmptyParams))
+    }
+
     suspend fun listSkills(baseUrl: String, secret: String?, cwd: String?): CodexResponse<JsonElement> {
         val client = clientManager.get(baseUrl, secret)
+        val normalizedCwd = cwd?.takeIf { it.isNotBlank() }
         val params =
             buildJsonObject {
-                cwd?.takeIf { it.isNotBlank() }?.let { put("cwd", it) }
+                normalizedCwd?.let {
+                    // `cwds` is the canonical parameter; include legacy `cwd` for older bridges.
+                    put("cwds", buildJsonArray { add(JsonPrimitive(it)) })
+                    put("cwd", it)
+                }
             }
         return client.send<JsonObject, JsonElement>(CodexRequest("skills/list", params = params))
     }

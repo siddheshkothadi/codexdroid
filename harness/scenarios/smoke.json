@@ -1,0 +1,34 @@
+{
+  "suite": "smoke",
+  "description": "Fast harness checks that protect trunk velocity.",
+  "scenarios": [
+    {
+      "id": "smoke.required_paths_exist",
+      "kind": "paths_exist",
+      "paths": [
+        "docs/harness/specs",
+        "docs/harness/playbooks",
+        "harness/scenarios",
+        "harness/fixtures",
+        "scripts/dev/start_fast_loop.ps1",
+        "scripts/ci/changed_paths_gate.ps1"
+      ]
+    },
+    {
+      "id": "smoke.report_schema_shape",
+      "kind": "json_required_keys",
+      "file": "harness/reports/schema.json",
+      "required_keys": ["$schema", "title", "type", "properties", "required"]
+    },
+    {
+      "id": "smoke.reducer_contract_documented",
+      "kind": "contains_text",
+      "file": "docs/harness/specs/reducer_contract.md",
+      "fragments": [
+        "ThreadEventReducer",
+        "Item idempotency",
+        "Unknown method tolerance"
+      ]
+    }
+  ]
+}

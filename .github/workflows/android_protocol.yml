@@ -1,0 +1,61 @@
+name: Android Protocol CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  protocol_eval:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Decide impacted suites
+        id: gate
+        shell: pwsh
+        run: ./scripts/ci/changed_paths_gate.ps1
+
+      - name: Grant execute permission for gradlew
+        if: contains(steps.gate.outputs.suites, 'protocol')
+        run: chmod +x gradlew
+
+      - name: Run protocol-focused unit tests
+        if: contains(steps.gate.outputs.suites, 'protocol')
+        run: ./gradlew testDebugUnitTest --tests '*ThreadEventReducerTest' --tests '*PendingRequestQueueTest'
+
+      - name: Run protocol harness suite
+        if: contains(steps.gate.outputs.suites, 'protocol')
+        run: python harness/runners/cli.py eval --suite protocol --report harness/reports/protocol_report.json
+
+      - name: Skip message
+        if: ${{ !contains(steps.gate.outputs.suites, 'protocol') }}
+        run: echo "Protocol suite not required for this change set."
+
+      - name: Upload protocol report
+        if: contains(steps.gate.outputs.suites, 'protocol')
+        uses: actions/upload-artifact@v4
+        with:
+          name: protocol-ci-report
+          path: harness/reports/protocol_report.json
+          retention-days: 5

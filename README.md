@@ -8,6 +8,25 @@ CodexDroid is an Android client for OpenAI Codex. It connects to the stream of e
 - Start the server: `npx codex-app-server@latest`
 - Open the app and enter `endpoint`, `secret`, and `name`, then get started
 
+## Fast Loop
+
+- Run fast local checks: `scripts/dev/start_fast_loop.ps1`
+- Run smoke harness directly: `python harness/runners/cli.py eval --suite smoke`
+- Run protocol harness directly: `python harness/runners/cli.py eval --suite protocol`
+
+## Harness
+
+- Specs and playbooks: `docs/harness/`
+- Harness runner: `harness/runners/cli.py`
+- Scenario suites: `harness/scenarios/`
+- Deterministic fixtures: `harness/fixtures/`
+
+## CI Workflows
+
+- Fast required checks: `.github/workflows/android_fast.yml`
+- Protocol-focused checks: `.github/workflows/android_protocol.yml`
+- Nightly trend checks: `.github/workflows/android_nightly.yml`
+
 ## Screenshots
 
 <p>

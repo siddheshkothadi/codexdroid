@@ -1,5 +1,8 @@
 package me.siddheshkothadi.codexdroid.ui.session
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -8,6 +11,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
@@ -28,6 +32,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -73,6 +78,7 @@ fun SessionScreen(
     
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    val turnSpeechController = rememberTurnTextToSpeechController()
     var inputText by remember { mutableStateOf("") }
     var showNewSessionDialog by remember { mutableStateOf(false) }
     var newSessionCwd by rememberSaveable { mutableStateOf("") }
@@ -195,6 +201,7 @@ fun SessionScreen(
                             pendingUserMessage = uiState.pendingUserMessage,
                             activeTurnId = uiState.activeTurnId,
                             scrollToTurnId = uiState.scrollToTurnId,
+                            turnSpeechController = turnSpeechController,
                             onScrollToTurnHandled = { viewModel.clearScrollTarget() },
                         )
                 }
@@ -252,9 +259,10 @@ fun SessionScreen(
         ControlsBottomSheet(
             uiState = uiState,
             onDismiss = { showControlsSheet = false },
-            onRefresh = { viewModel.refreshControls() },
-            onSelectModelId = { viewModel.setSelectedModelId(it) },
-            onSelectEffort = { viewModel.setSelectedEffort(it) },
+            onSave = { modelId, effort ->
+                viewModel.saveControlsSelection(modelId, effort)
+                showControlsSheet = false
+            },
         )
     }
 
@@ -364,6 +372,35 @@ fun SessionScreen(
             }
         )
     }
+
+    uiState.pendingUnknownRequest?.let { req ->
+        AlertDialog(
+            onDismissRequest = { /* keep until acknowledged */ },
+            title = { Text("Needs attention") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(req.method, style = MaterialTheme.typography.labelMedium)
+                    val rendered = remember(req.params) { renderJsonForUi(req.params) }
+                    if (rendered.isNotBlank()) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                rendered,
+                                modifier = Modifier.padding(12.dp),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.dismissUnknownRequest() }) { Text("Dismiss") }
+            }
+        )
+    }
 }
 
 private fun renderJsonForUi(element: JsonElement?): String {
@@ -440,12 +477,14 @@ private fun SessionTopBar(
 private fun ControlsBottomSheet(
     uiState: SessionUiState,
     onDismiss: () -> Unit,
-    onRefresh: () -> Unit,
-    onSelectModelId: (String?) -> Unit,
-    onSelectEffort: (String?) -> Unit,
+    onSave: (String?, String?) -> Unit,
 ) {
     val models = uiState.models
-    val selectedModel = uiState.selectedModelId?.let { id -> models.firstOrNull { it.id == id } }
+    var draftModelId by rememberSaveable(uiState.selectedModelId) { mutableStateOf(uiState.selectedModelId) }
+    var draftEffort by rememberSaveable(uiState.selectedEffort) { mutableStateOf(uiState.selectedEffort) }
+
+    val selectedModel =
+        draftModelId?.let { id -> models.firstOrNull { it.id == id || it.model == id } }
     val supportedEfforts =
         selectedModel?.supportedReasoningEfforts?.map { it.reasoningEffort }?.filter { it.isNotBlank() }.orEmpty()
     val defaultEffort = selectedModel?.defaultReasoningEffort?.takeIf { it.isNotBlank() }
@@ -455,6 +494,11 @@ private fun ControlsBottomSheet(
             defaultEffort != null -> listOf(defaultEffort)
             else -> emptyList()
         }
+    val persistedModel = uiState.selectedModelId?.takeIf { it.isNotBlank() }
+    val persistedEffort = uiState.selectedEffort?.takeIf { it.isNotBlank() }
+    val normalizedDraftModel = draftModelId?.takeIf { it.isNotBlank() }
+    val normalizedDraftEffort = draftEffort?.takeIf { it.isNotBlank() }
+    val isDirty = normalizedDraftModel != persistedModel || normalizedDraftEffort != persistedEffort
 
     var tabIndex by rememberSaveable { mutableIntStateOf(0) }
     ModalBottomSheet(
@@ -467,7 +511,10 @@ private fun ControlsBottomSheet(
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Session controls", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                        TextButton(onClick = onRefresh, enabled = !uiState.isControlsSyncing) { Text("Refresh") }
+                        TextButton(
+                            onClick = { onSave(normalizedDraftModel, normalizedDraftEffort) },
+                            enabled = !uiState.isControlsSyncing && isDirty,
+                        ) { Text("Save") }
                     }
                     if (uiState.isControlsSyncing) {
                         Spacer(Modifier.height(8.dp))
@@ -499,15 +546,46 @@ private fun ControlsBottomSheet(
                     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                         ModelDropdown(
                             models = models,
-                            selectedModelId = uiState.selectedModelId,
-                            onSelectModelId = onSelectModelId
+                            selectedModelId = draftModelId,
+                            onSelectModelId = { nextModelId ->
+                                val normalizedNextModel = nextModelId?.takeIf { it.isNotBlank() }
+                                draftModelId = normalizedNextModel
+
+                                val nextModel =
+                                    normalizedNextModel?.let { id ->
+                                        models.firstOrNull { it.id == id || it.model == id }
+                                    }
+                                val nextSupportedEfforts =
+                                    nextModel?.supportedReasoningEfforts
+                                        ?.map { it.reasoningEffort }
+                                        ?.filter { it.isNotBlank() }
+                                        .orEmpty()
+                                val nextDefaultEffort =
+                                    nextModel?.defaultReasoningEffort?.takeIf { it.isNotBlank() }
+                                val currentEffort = draftEffort?.takeIf { it.isNotBlank() }
+
+                                draftEffort =
+                                    when {
+                                        currentEffort != null &&
+                                            (nextSupportedEfforts.isEmpty() || currentEffort in nextSupportedEfforts) ->
+                                            currentEffort
+                                        nextDefaultEffort != null &&
+                                            (nextSupportedEfforts.isEmpty() || nextDefaultEffort in nextSupportedEfforts) ->
+                                            nextDefaultEffort
+                                        nextSupportedEfforts.isNotEmpty() ->
+                                            nextSupportedEfforts.first()
+                                        else -> null
+                                    }
+                            }
                         )
                         Spacer(Modifier.height(12.dp))
                         EffortDropdown(
                             efforts = effortOptions,
-                            selectedEffort = uiState.selectedEffort,
+                            selectedEffort = draftEffort,
                             enabled = effortOptions.isNotEmpty(),
-                            onSelect = onSelectEffort
+                            onSelect = { nextEffort ->
+                                draftEffort = nextEffort?.takeIf { it.isNotBlank() }
+                            }
                         )
                     }
                     Spacer(Modifier.height(16.dp))
@@ -526,7 +604,10 @@ private fun ControlsBottomSheet(
                             contentPadding = PaddingValues(vertical = 8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            items(uiState.skills, key = { it.path }) { skill ->
+                            itemsIndexed(
+                                items = uiState.skills,
+                                key = { index, skill -> "${skill.name}:${skill.path}:$index" },
+                            ) { _, skill ->
                                 ElevatedCard {
                                     Column(Modifier.padding(12.dp)) {
                                         Text(skill.name, style = MaterialTheme.typography.titleSmall)
@@ -538,14 +619,16 @@ private fun ControlsBottomSheet(
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
-                                        Spacer(Modifier.height(6.dp))
-                                        Text(
-                                            skill.path,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
+                                        if (skill.path.isNotBlank()) {
+                                            Spacer(Modifier.height(6.dp))
+                                            Text(
+                                                skill.path,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -566,7 +649,7 @@ private fun ModelDropdown(
     onSelectModelId: (String?) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val selected = models.firstOrNull { it.id == selectedModelId }
+    val selected = models.firstOrNull { it.id == selectedModelId || it.model == selectedModelId }
     ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
         OutlinedTextField(
             value = selected?.displayName ?: (selectedModelId ?: ""),
@@ -687,17 +770,11 @@ private fun MessageList(
     pendingUserMessage: String?,
     activeTurnId: String?,
     scrollToTurnId: String?,
+    turnSpeechController: TurnTextToSpeechController,
     onScrollToTurnHandled: () -> Unit,
 ) {
-    val allItems = thread.turns.withIndex().flatMap { (turnIdx, turn) ->
-        turn.items.withIndex().map { (itemIdx, item) -> Triple(turnIdx, itemIdx, item) }
-    }.filter { (_, _, item) ->
-        if (item is ThreadItem.Reasoning) {
-            item.summary.any { it.isNotBlank() } || item.content.any { it.isNotBlank() }
-        } else {
-            true
-        }
-    }
+    val timelineEntries = remember(thread.turns) { buildTimelineEntries(thread.turns) }
+    val displayEntries = remember(timelineEntries) { timelineEntries.asReversed() }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val showScrollToBottom by remember {
@@ -706,18 +783,17 @@ private fun MessageList(
         }
     }
 
-    LaunchedEffect(allItems.size, isSending) {
+    LaunchedEffect(displayEntries.size, isSending) {
         // Only auto-scroll if the user is already at the bottom; otherwise show the FAB.
-        if (!showScrollToBottom && allItems.isNotEmpty()) {
+        if (!showScrollToBottom && displayEntries.isNotEmpty()) {
             listState.animateScrollToItem(0)
         }
     }
 
-    LaunchedEffect(scrollToTurnId, allItems.size) {
+    LaunchedEffect(scrollToTurnId, displayEntries.size) {
         val targetTurnId = scrollToTurnId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        // Items are displayed as `allItems.asReversed()` in a reverseLayout list.
-        val display = allItems.asReversed()
-        val firstIndex = display.indexOfFirst { (turnIdx, _, _) -> thread.turns.getOrNull(turnIdx)?.id == targetTurnId }
+        // Entries are displayed as `displayEntries` in a reverseLayout list.
+        val firstIndex = displayEntries.indexOfFirst { it.turnId == targetTurnId }
         if (firstIndex == -1) return@LaunchedEffect
 
         val offset = (if (isSending) 1 else 0) + (if (!pendingUserMessage.isNullOrBlank()) 1 else 0)
@@ -749,8 +825,15 @@ private fun MessageList(
                     )
                 }
             }
-            items(allItems.asReversed(), key = { (t, i, item) -> "$t-$i-${item.id}" }) { (_, _, item) ->
-                ThreadItemBubble(item)
+            items(displayEntries, key = { it.key }) { entry ->
+                when (entry) {
+                    is ThreadTimelineEntry.ItemEntry -> ThreadItemBubble(entry.item)
+                    is ThreadTimelineEntry.SpeechControlEntry ->
+                        TurnSpeechControlRow(
+                            entry = entry,
+                            turnSpeechController = turnSpeechController,
+                        )
+                }
             }
         }
 
@@ -764,6 +847,152 @@ private fun MessageList(
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer
             ) {
                 Icon(Icons.Default.ArrowDownward, contentDescription = "Scroll to bottom")
+            }
+        }
+    }
+}
+
+private sealed interface ThreadTimelineEntry {
+    val key: String
+    val turnId: String
+
+    data class ItemEntry(
+        override val key: String,
+        override val turnId: String,
+        val item: ThreadItem,
+    ) : ThreadTimelineEntry
+
+    data class SpeechControlEntry(
+        override val key: String,
+        override val turnId: String,
+        val rawText: String,
+        val speechText: String,
+    ) : ThreadTimelineEntry
+}
+
+private fun buildTimelineEntries(turns: List<Turn>): List<ThreadTimelineEntry> {
+    val entries = mutableListOf<ThreadTimelineEntry>()
+    turns.withIndex().forEach { (turnIdx, turn) ->
+        val visibleItems =
+            turn.items.withIndex().mapNotNull { (itemIdx, item) ->
+                if (item is ThreadItem.Reasoning) {
+                    val hasContent = item.summary.any { it.isNotBlank() } || item.content.any { it.isNotBlank() }
+                    if (!hasContent) return@mapNotNull null
+                }
+                ThreadTimelineEntry.ItemEntry(
+                    key = "$turnIdx-$itemIdx-${item.id}",
+                    turnId = turn.id,
+                    item = item,
+                )
+            }
+        entries.addAll(visibleItems)
+
+        val speechPayload = buildTurnSpeechPayload(turn)
+        if (turn.status == TurnStatus.completed && speechPayload.rawText.isNotBlank()) {
+            entries.add(
+                ThreadTimelineEntry.SpeechControlEntry(
+                    key = "tts-${turn.id}",
+                    turnId = turn.id,
+                    rawText = speechPayload.rawText,
+                    speechText = speechPayload.speechText,
+                )
+            )
+        }
+    }
+    return entries
+}
+
+private data class TurnSpeechPayload(
+    val rawText: String,
+    val speechText: String,
+)
+
+private fun buildTurnSpeechPayload(turn: Turn): TurnSpeechPayload {
+    val raw =
+        turn.items
+        .mapNotNull { item ->
+            val message = item as? ThreadItem.AgentMessage ?: return@mapNotNull null
+            message.text.trim().takeIf { it.isNotBlank() }
+        }
+        .joinToString(separator = "\n\n")
+        .trim()
+    return TurnSpeechPayload(
+        rawText = raw,
+        speechText = normalizeTextForSpeech(raw),
+    )
+}
+
+private fun normalizeTextForSpeech(input: String): String {
+    if (input.isBlank()) return ""
+    return input
+        // Remove fenced code blocks to keep speech natural.
+        .replace(Regex("```[\\s\\S]*?```"), " code snippet omitted ")
+        // Convert markdown links/images to readable labels.
+        .replace(Regex("!\\[([^\\]]*)]\\(([^)]+)\\)"), "$1")
+        .replace(Regex("\\[([^\\]]+)]\\(([^)]+)\\)"), "$1")
+        // Keep inline code content, drop backticks.
+        .replace(Regex("`([^`]*)`"), "$1")
+        .replace("`", " ")
+        // Strip common markdown prefix syntax.
+        .replace(Regex("(?m)^\\s{0,3}#{1,6}\\s*"), "")
+        .replace(Regex("(?m)^\\s*[-*+]\\s+"), "")
+        .replace(Regex("(?m)^\\s*\\d+\\.\\s+"), "")
+        .replace(Regex("(?m)^\\s*>+\\s?"), "")
+        // Remove emphasis/control markers that sound awkward in TTS.
+        .replace(Regex("[*_~]"), "")
+        .replace(Regex("<[^>]+>"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+}
+
+@Composable
+private fun TurnSpeechControlRow(
+    entry: ThreadTimelineEntry.SpeechControlEntry,
+    turnSpeechController: TurnTextToSpeechController,
+) {
+    val context = LocalContext.current
+    val isActiveTurn = turnSpeechController.activeTurnId == entry.turnId
+    val state =
+        if (isActiveTurn) turnSpeechController.playbackState else TurnSpeechPlaybackState.Idle
+    val (ttsIcon, ttsLabel, onTtsClick) =
+        when (state) {
+            TurnSpeechPlaybackState.Speaking ->
+                Triple(Icons.Default.Pause, "Pause", { turnSpeechController.pause() })
+            TurnSpeechPlaybackState.Paused ->
+                Triple(Icons.Default.PlayArrow, "Resume", { turnSpeechController.resume() })
+            TurnSpeechPlaybackState.Idle ->
+                Triple(
+                    Icons.Default.VolumeUp,
+                    "Listen",
+                    { turnSpeechController.start(entry.turnId, entry.speechText) }
+                )
+        }
+
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp).offset(y = (-8).dp),
+        horizontalAlignment = Alignment.Start
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(
+                onClick = {
+                    val clipboard =
+                        context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                    clipboard?.setPrimaryClip(ClipData.newPlainText("turn", entry.rawText))
+                },
+                modifier = Modifier.size(34.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ContentCopy,
+                    contentDescription = "Copy agent response",
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            IconButton(onClick = onTtsClick, modifier = Modifier.size(34.dp)) {
+                Icon(
+                    imageVector = ttsIcon,
+                    contentDescription = ttsLabel,
+                    modifier = Modifier.size(18.dp),
+                )
             }
         }
     }
@@ -874,6 +1103,7 @@ private fun TypingDots(color: Color) {
 @Composable
 fun ThreadItemBubble(item: ThreadItem) {
     val isUser = item is ThreadItem.UserMessage
+    val context = LocalContext.current
     val alignment = if (isUser) Alignment.End else Alignment.Start
     val background = if (isUser) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
     val isFullWidthItem = !isUser && item is ThreadItem.AgentMessage
@@ -887,6 +1117,12 @@ fun ThreadItemBubble(item: ThreadItem) {
             item is ThreadItem.EnteredReviewMode ||
             item is ThreadItem.ExitedReviewMode ||
             item is ThreadItem.CollabAgentToolCall
+    val copyText =
+        when (item) {
+            is ThreadItem.UserMessage -> item.content.joinToString(separator = "") { it.text.orEmpty() }.trim()
+            is ThreadItem.AgentMessage -> item.text.trim()
+            else -> ""
+        }
     
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
@@ -909,14 +1145,18 @@ fun ThreadItemBubble(item: ThreadItem) {
         ) {
             when (item) {
                 is ThreadItem.UserMessage -> {
-                    Text(
-                        text = item.content.joinToString { it.text.orEmpty() },
-                        style = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onPrimaryContainer),
-                    )
+                    SelectionContainer {
+                        Text(
+                            text = item.content.joinToString { it.text.orEmpty() },
+                            style = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onPrimaryContainer),
+                        )
+                    }
                 }
                 is ThreadItem.AgentMessage -> {
-                    RichText(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
-                        Markdown(item.text)
+                    SelectionContainer {
+                        RichText(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
+                            Markdown(item.text)
+                        }
                     }
                 }
                 is ThreadItem.Reasoning -> ReasoningItem(item)
@@ -930,6 +1170,23 @@ fun ThreadItemBubble(item: ThreadItem) {
                 is ThreadItem.ExitedReviewMode -> InfoItem(id = item.id, title = "Review finished", body = item.review)
                 is ThreadItem.CollabAgentToolCall ->
                     InfoItem(id = item.id, title = "Collab tool call", body = "${item.tool} (${item.status})")
+            }
+        }
+
+        if (item is ThreadItem.UserMessage && copyText.isNotBlank()) {
+            IconButton(
+                onClick = {
+                    val clipboard =
+                        context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                    clipboard?.setPrimaryClip(ClipData.newPlainText("message", copyText))
+                },
+                modifier = Modifier.size(34.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ContentCopy,
+                    contentDescription = "Copy message",
+                    modifier = Modifier.size(18.dp),
+                )
             }
         }
     }
@@ -1457,12 +1714,15 @@ fun ChatInput(
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = MaterialTheme.colorScheme.surface,
                     unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                    disabledContainerColor = MaterialTheme.colorScheme.surface,
                     focusedIndicatorColor = Color.Transparent,
                     disabledIndicatorColor = Color.Transparent,
                     unfocusedIndicatorColor = Color.Transparent,
                     cursorColor = MaterialTheme.colorScheme.primary,
                     focusedTextColor = MaterialTheme.colorScheme.onBackground,
-                    unfocusedTextColor = MaterialTheme.colorScheme.onBackground
+                    unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
+                    disabledTextColor = MaterialTheme.colorScheme.onBackground,
+                    disabledPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             )
         }

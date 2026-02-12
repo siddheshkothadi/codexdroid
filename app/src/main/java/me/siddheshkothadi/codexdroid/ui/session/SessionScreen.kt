@@ -19,6 +19,7 @@ import androidx.compose.material3.*
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -28,7 +29,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.SolidColor
@@ -41,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.halilibo.richtext.commonmark.Markdown
 import com.halilibo.richtext.ui.material3.RichText
+import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import me.siddheshkothadi.codexdroid.codex.*
@@ -775,6 +779,10 @@ private fun MessageList(
 ) {
     val timelineEntries = remember(thread.turns) { buildTimelineEntries(thread.turns) }
     val displayEntries = remember(timelineEntries) { timelineEntries.asReversed() }
+    val liveReasoningHeader =
+        remember(thread.turns, activeTurnId, isSending) {
+            if (!isSending) null else extractLiveReasoningHeader(thread, activeTurnId)
+        }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val showScrollToBottom by remember {
@@ -796,7 +804,10 @@ private fun MessageList(
         val firstIndex = displayEntries.indexOfFirst { it.turnId == targetTurnId }
         if (firstIndex == -1) return@LaunchedEffect
 
-        val offset = (if (isSending) 1 else 0) + (if (!pendingUserMessage.isNullOrBlank()) 1 else 0)
+        val offset =
+            (if (isSending) 1 else 0) +
+                (if (!liveReasoningHeader.isNullOrBlank()) 1 else 0) +
+                (if (!pendingUserMessage.isNullOrBlank()) 1 else 0)
         val targetIndex = offset + firstIndex
         listState.animateScrollToItem(targetIndex)
         onScrollToTurnHandled()
@@ -813,6 +824,11 @@ private fun MessageList(
             if (isSending) {
                 item(key = "typing-indicator") {
                     AgentTypingIndicator()
+                }
+                if (!liveReasoningHeader.isNullOrBlank()) {
+                    item(key = "reasoning-live-header") {
+                        ReasoningLiveHeader(text = liveReasoningHeader)
+                    }
                 }
             }
             if (!pendingUserMessage.isNullOrBlank() && !threadHasUserMessage(thread, activeTurnId, pendingUserMessage)) {
@@ -920,6 +936,120 @@ private fun buildTurnSpeechPayload(turn: Turn): TurnSpeechPayload {
         rawText = raw,
         speechText = normalizeTextForSpeech(raw),
     )
+}
+
+private fun extractLiveReasoningHeader(thread: Thread, activeTurnId: String?): String? {
+    val candidateTurns =
+        buildList {
+            if (!activeTurnId.isNullOrBlank()) {
+                thread.turns.firstOrNull { it.id == activeTurnId }?.let { add(it) }
+            }
+            thread.turns.lastOrNull { it.status == TurnStatus.inProgress }?.let { turn ->
+                if (none { it.id == turn.id }) add(turn)
+            }
+        }
+    if (candidateTurns.isEmpty()) return null
+
+    for (turn in candidateTurns) {
+        val reasoningItems =
+            turn.items.asReversed().mapNotNull { item ->
+                item as? ThreadItem.Reasoning
+            }
+        for (reasoning in reasoningItems) {
+            val summaryText =
+                reasoning.summary
+                    .asReversed()
+                    .firstOrNull { it.isNotBlank() }
+                    ?.trim()
+            if (!summaryText.isNullOrBlank()) {
+                return normalizeReasoningHeader(summaryText)
+            }
+        }
+    }
+    return null
+}
+
+private fun normalizeReasoningHeader(raw: String): String {
+    if (raw.isBlank()) return ""
+    return raw
+        .replace(Regex("`([^`]*)`"), "$1")
+        .replace(Regex("[*_~]"), "")
+        .replace(Regex("(?m)^\\s{0,3}#{1,6}\\s*"), "")
+        .replace(Regex("(?m)^\\s*[-*+]\\s+"), "")
+        .replace(Regex("(?m)^\\s*\\d+\\.\\s+"), "")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+}
+
+@Composable
+private fun ReasoningLiveHeader(text: String) {
+    val surfaceTint = MaterialTheme.colorScheme.surfaceVariant
+    val glowColor = MaterialTheme.colorScheme.surface
+    val textColor = MaterialTheme.colorScheme.onSurfaceVariant
+
+    val transition = rememberInfiniteTransition(label = "reasoning_live_glow")
+    val sweep by transition.animateFloat(
+        initialValue = -0.35f,
+        targetValue = 1.35f,
+        animationSpec =
+            infiniteRepeatable(
+                animation = tween(durationMillis = 1800, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+        label = "reasoning_live_sweep",
+    )
+    val pulse by transition.animateFloat(
+        initialValue = 0.65f,
+        targetValue = 1f,
+        animationSpec =
+            infiniteRepeatable(
+                animation = tween(durationMillis = 1100, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+        label = "reasoning_live_pulse",
+    )
+
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp).offset(y = (-6).dp),
+        horizontalAlignment = Alignment.Start,
+    ) {
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = surfaceTint.copy(alpha = 0.36f),
+            tonalElevation = 0.dp,
+        ) {
+            Text(
+                text = text,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyLarge,
+                color = textColor,
+                modifier =
+                    Modifier
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .drawWithContent {
+                            drawContent()
+                            val centerX = size.width * sweep
+                            val spread = max(size.width * 0.24f, 42.dp.toPx())
+                            drawRect(
+                                brush =
+                                    Brush.horizontalGradient(
+                                        colors =
+                                            listOf(
+                                                Color.Transparent,
+                                                glowColor.copy(alpha = 0.10f * pulse),
+                                                glowColor.copy(alpha = 0.55f * pulse),
+                                                glowColor.copy(alpha = 0.12f * pulse),
+                                                Color.Transparent,
+                                            ),
+                                        startX = centerX - spread,
+                                        endX = centerX + spread,
+                                    )
+                            )
+                        },
+            )
+        }
+    }
 }
 
 private fun normalizeTextForSpeech(input: String): String {

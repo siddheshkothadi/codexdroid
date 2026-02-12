@@ -1,5 +1,7 @@
 package me.siddheshkothadi.codexdroid.ui.session
 
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -36,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.halilibo.richtext.commonmark.Markdown
 import com.halilibo.richtext.ui.material3.RichText
+import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import me.siddheshkothadi.codexdroid.codex.*
@@ -689,13 +692,37 @@ private fun MessageList(
     scrollToTurnId: String?,
     onScrollToTurnHandled: () -> Unit,
 ) {
-    val allItems = thread.turns.withIndex().flatMap { (turnIdx, turn) ->
-        turn.items.withIndex().map { (itemIdx, item) -> Triple(turnIdx, itemIdx, item) }
-    }.filter { (_, _, item) ->
-        if (item is ThreadItem.Reasoning) {
-            item.summary.any { it.isNotBlank() } || item.content.any { it.isNotBlank() }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val ttsController = remember(context) { TurnTtsController(context) }
+    DisposableEffect(ttsController) {
+        onDispose { ttsController.release() }
+    }
+    val ttsState by ttsController.state.collectAsState()
+
+    val displayItems = thread.turns.withIndex().flatMap { (turnIdx, turn) ->
+        val renderedItems =
+            turn.items.withIndex().mapNotNull { (itemIdx, item) ->
+                val renderable =
+                    if (item is ThreadItem.Reasoning) {
+                        item.summary.any { it.isNotBlank() } || item.content.any { it.isNotBlank() }
+                    } else {
+                        true
+                    }
+                if (renderable) {
+                    TurnDisplayItem.ThreadListItem(turnIdx = turnIdx, itemIdx = itemIdx, item = item)
+                } else {
+                    null
+                }
+            }
+        val turnText =
+            turn.items.filterIsInstance<ThreadItem.AgentMessage>()
+                .joinToString(separator = "\n\n") { it.text.trim() }
+                .trim()
+
+        if (turn.status == TurnStatus.completed && turnText.isNotBlank()) {
+            renderedItems + TurnDisplayItem.SpeechControl(turn.id, turnText)
         } else {
-            true
+            renderedItems
         }
     }
     val listState = rememberLazyListState()
@@ -706,18 +733,23 @@ private fun MessageList(
         }
     }
 
-    LaunchedEffect(allItems.size, isSending) {
+    LaunchedEffect(displayItems.size, isSending) {
         // Only auto-scroll if the user is already at the bottom; otherwise show the FAB.
-        if (!showScrollToBottom && allItems.isNotEmpty()) {
+        if (!showScrollToBottom && displayItems.isNotEmpty()) {
             listState.animateScrollToItem(0)
         }
     }
 
-    LaunchedEffect(scrollToTurnId, allItems.size) {
+    LaunchedEffect(scrollToTurnId, displayItems.size) {
         val targetTurnId = scrollToTurnId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         // Items are displayed as `allItems.asReversed()` in a reverseLayout list.
-        val display = allItems.asReversed()
-        val firstIndex = display.indexOfFirst { (turnIdx, _, _) -> thread.turns.getOrNull(turnIdx)?.id == targetTurnId }
+        val display = displayItems.asReversed()
+        val firstIndex = display.indexOfFirst { entry ->
+            when (entry) {
+                is TurnDisplayItem.ThreadListItem -> thread.turns.getOrNull(entry.turnIdx)?.id == targetTurnId
+                is TurnDisplayItem.SpeechControl -> entry.turnId == targetTurnId
+            }
+        }
         if (firstIndex == -1) return@LaunchedEffect
 
         val offset = (if (isSending) 1 else 0) + (if (!pendingUserMessage.isNullOrBlank()) 1 else 0)
@@ -749,8 +781,26 @@ private fun MessageList(
                     )
                 }
             }
-            items(allItems.asReversed(), key = { (t, i, item) -> "$t-$i-${item.id}" }) { (_, _, item) ->
-                ThreadItemBubble(item)
+            items(
+                displayItems.asReversed(),
+                key = { entry ->
+                    when (entry) {
+                        is TurnDisplayItem.ThreadListItem -> "${entry.turnIdx}-${entry.itemIdx}-${entry.item.id}"
+                        is TurnDisplayItem.SpeechControl -> "speech-${entry.turnId}"
+                    }
+                }
+            ) { entry ->
+                when (entry) {
+                    is TurnDisplayItem.ThreadListItem -> ThreadItemBubble(entry.item)
+                    is TurnDisplayItem.SpeechControl ->
+                        AgentTurnSpeechControl(
+                            isPlaying = ttsState.activeTurnId == entry.turnId && !ttsState.isPaused,
+                            isPaused = ttsState.activeTurnId == entry.turnId && ttsState.isPaused,
+                            onSpeak = { ttsController.start(entry.turnId, entry.text) },
+                            onPause = { ttsController.pause() },
+                            onResume = { ttsController.resume() }
+                        )
+                }
             }
         }
 
@@ -764,6 +814,143 @@ private fun MessageList(
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer
             ) {
                 Icon(Icons.Default.ArrowDownward, contentDescription = "Scroll to bottom")
+            }
+        }
+    }
+}
+
+private sealed interface TurnDisplayItem {
+    data class ThreadListItem(val turnIdx: Int, val itemIdx: Int, val item: ThreadItem) : TurnDisplayItem
+    data class SpeechControl(val turnId: String, val text: String) : TurnDisplayItem
+}
+
+private data class TurnSpeechState(
+    val activeTurnId: String? = null,
+    val isPaused: Boolean = false,
+)
+
+private class TurnTtsController(context: android.content.Context) {
+    private val appContext = context.applicationContext
+    private var tts: TextToSpeech? = null
+    private var initialized = false
+    private var currentTurnId: String? = null
+    private var currentText: String = ""
+    private var spokenOffset: Int = 0
+    private var utteranceBaseOffset: Int = 0
+    private val _state = kotlinx.coroutines.flow.MutableStateFlow(TurnSpeechState())
+    val state: kotlinx.coroutines.flow.StateFlow<TurnSpeechState> = _state.asStateFlow()
+
+    init {
+        tts = TextToSpeech(appContext) { status ->
+            initialized = status == TextToSpeech.SUCCESS
+            if (initialized) {
+                tts?.language = Locale.getDefault()
+            }
+        }.also { engine ->
+            engine.setOnUtteranceProgressListener(
+                object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) = Unit
+
+                    override fun onDone(utteranceId: String?) {
+                        spokenOffset = 0
+                        _state.value = TurnSpeechState()
+                    }
+
+                    @Deprecated("Deprecated in Java")
+                    override fun onError(utteranceId: String?) {
+                        spokenOffset = 0
+                        _state.value = TurnSpeechState()
+                    }
+
+                    override fun onRangeStart(
+                        utteranceId: String?,
+                        start: Int,
+                        end: Int,
+                        frame: Int,
+                    ) {
+                        spokenOffset = utteranceBaseOffset + start
+                    }
+                }
+            )
+        }
+    }
+
+    fun start(turnId: String, text: String) {
+        if (!initialized || text.isBlank()) return
+        currentTurnId = turnId
+        currentText = text
+        spokenOffset = 0
+        speakFromOffset()
+    }
+
+    fun pause() {
+        val turnId = currentTurnId ?: return
+        tts?.stop()
+        _state.value = TurnSpeechState(activeTurnId = turnId, isPaused = true)
+    }
+
+    fun resume() {
+        val turnId = currentTurnId ?: return
+        if (!initialized || currentText.isBlank()) return
+        _state.value = TurnSpeechState(activeTurnId = turnId, isPaused = false)
+        speakFromOffset()
+    }
+
+    private fun speakFromOffset() {
+        val turnId = currentTurnId ?: return
+        utteranceBaseOffset = spokenOffset.coerceAtMost(currentText.length)
+        val remainingText = currentText.drop(utteranceBaseOffset)
+        if (remainingText.isBlank()) {
+            _state.value = TurnSpeechState()
+            return
+        }
+        _state.value = TurnSpeechState(activeTurnId = turnId, isPaused = false)
+        tts?.speak(remainingText, TextToSpeech.QUEUE_FLUSH, null, turnId)
+    }
+
+    fun release() {
+        tts?.stop()
+        tts?.shutdown()
+        tts = null
+    }
+}
+
+@Composable
+private fun AgentTurnSpeechControl(
+    isPlaying: Boolean,
+    isPaused: Boolean,
+    onSpeak: () -> Unit,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+        horizontalArrangement = Arrangement.Start,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceVariant
+        ) {
+            IconButton(onClick = {
+                when {
+                    isPlaying -> onPause()
+                    isPaused -> onResume()
+                    else -> onSpeak()
+                }
+            }) {
+                Icon(
+                    imageVector = when {
+                        isPlaying -> Icons.Default.Pause
+                        isPaused -> Icons.Default.PlayArrow
+                        else -> Icons.Default.VolumeUp
+                    },
+                    contentDescription = when {
+                        isPlaying -> "Pause speech"
+                        isPaused -> "Resume speech"
+                        else -> "Read response"
+                    }
+                )
             }
         }
     }

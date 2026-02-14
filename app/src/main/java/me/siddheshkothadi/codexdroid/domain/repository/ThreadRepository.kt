@@ -14,4 +14,8 @@ interface ThreadRepository {
     suspend fun refreshThreads(connection: Connection)
 
     suspend fun upsertThread(connectionId: String, thread: Thread)
+
+    suspend fun renameThread(connection: Connection, threadId: String, newName: String)
+
+    suspend fun archiveThread(connection: Connection, threadId: String)
 }

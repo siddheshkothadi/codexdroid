@@ -1,8 +1,5 @@
 package me.siddheshkothadi.codexdroid.feature.session.ui
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -18,23 +15,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.halilibo.richtext.commonmark.Markdown
 import com.halilibo.richtext.ui.material3.RichText
 import me.siddheshkothadi.codexdroid.codex.*
+import me.siddheshkothadi.codexdroid.ui.theme.CodexTheme
 @Composable
 fun ThreadItemBubble(item: ThreadItem) {
     val isUser = item is ThreadItem.UserMessage
-    val context = LocalContext.current
     val alignment = if (isUser) Alignment.End else Alignment.Start
-    val background = if (isUser) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+    val background = if (isUser) CodexTheme.colors.userMessageBackground else Color.Transparent
     val isFullWidthItem = !isUser && item is ThreadItem.AgentMessage
     val isCardLikeItem =
         item is ThreadItem.CommandExecution ||
             item is ThreadItem.Reasoning ||
+            item is ThreadItem.PlanUpdate ||
             item is ThreadItem.FileChange ||
             item is ThreadItem.McpToolCall ||
             item is ThreadItem.WebSearch ||
@@ -42,13 +38,6 @@ fun ThreadItemBubble(item: ThreadItem) {
             item is ThreadItem.EnteredReviewMode ||
             item is ThreadItem.ExitedReviewMode ||
             item is ThreadItem.CollabAgentToolCall
-    val copyText =
-        when (item) {
-            is ThreadItem.UserMessage -> item.content.joinToString(separator = "") { it.text.orEmpty() }.trim()
-            is ThreadItem.AgentMessage -> item.text.trim()
-            else -> ""
-        }
-    
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
         horizontalAlignment = alignment
@@ -73,7 +62,7 @@ fun ThreadItemBubble(item: ThreadItem) {
                     SelectionContainer {
                         Text(
                             text = item.content.joinToString { it.text.orEmpty() },
-                            style = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onPrimaryContainer),
+                            style = MaterialTheme.typography.bodyLarge.copy(color = CodexTheme.colors.userMessageText),
                         )
                     }
                 }
@@ -97,23 +86,6 @@ fun ThreadItemBubble(item: ThreadItem) {
                     InfoItem(id = item.id, title = "Collab tool call", body = "${item.tool} (${item.status})")
             }
         }
-
-        if (item is ThreadItem.UserMessage && copyText.isNotBlank()) {
-            IconButton(
-                onClick = {
-                    val clipboard =
-                        context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                    clipboard?.setPrimaryClip(ClipData.newPlainText("message", copyText))
-                },
-                modifier = Modifier.size(34.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Default.ContentCopy,
-                    contentDescription = "Copy message",
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-        }
     }
 }
 
@@ -126,7 +98,7 @@ fun ReasoningItem(item: ThreadItem.Reasoning) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .background(CodexTheme.colors.bgSecondary)
                 .clickable(onClick = toggle)
                 .padding(8.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -134,27 +106,27 @@ fun ReasoningItem(item: ThreadItem.Reasoning) {
             Text(
                 "Reasoning",
                 style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = CodexTheme.colors.textSecondary,
             )
             Spacer(Modifier.width(4.dp))
             Icon(
                 if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = CodexTheme.colors.textSecondary,
                 modifier = Modifier.size(18.dp)
             )
         }
         if (expanded) {
             Column(modifier = Modifier.padding(12.dp)) {
                 item.summary.forEach {
-                    ProvideTextStyle(MaterialTheme.typography.bodySmall.copy(fontStyle = FontStyle.Italic)) {
+                    ProvideTextStyle(MaterialTheme.typography.bodySmall) {
                         RichText(modifier = Modifier.fillMaxWidth()) {
                             Markdown(it)
                         }
                     }
                 }
                 item.content.forEach {
-                    ProvideTextStyle(MaterialTheme.typography.bodySmall.copy(fontStyle = FontStyle.Italic)) {
+                    ProvideTextStyle(MaterialTheme.typography.bodySmall) {
                         RichText(modifier = Modifier.fillMaxWidth()) {
                             Markdown(it)
                         }
@@ -168,23 +140,24 @@ fun ReasoningItem(item: ThreadItem.Reasoning) {
 @Composable
 fun CommandExecutionItem(item: ThreadItem.CommandExecution) {
     var expanded by rememberSaveable(item.id) { mutableStateOf(false) }
+    val colors = CodexTheme.colors
     Column {
         val toggle = { expanded = !expanded }
         val isRunning = item.status == CommandExecutionStatus.inProgress || item.status == CommandExecutionStatus.unknown
         val title = if (isRunning) "Running" else "Ran"
         val dotColor =
             when (item.status) {
-                CommandExecutionStatus.inProgress -> Color(0xFFF9A825) // yellow
-                CommandExecutionStatus.completed -> Color(0xFF2E7D32) // green
-                CommandExecutionStatus.failed, CommandExecutionStatus.declined -> Color(0xFFC62828) // red
-                CommandExecutionStatus.unknown -> MaterialTheme.colorScheme.outline
+                CommandExecutionStatus.inProgress -> colors.accentWarning
+                CommandExecutionStatus.completed -> colors.accentSuccess
+                CommandExecutionStatus.failed, CommandExecutionStatus.declined -> colors.accentError
+                CommandExecutionStatus.unknown -> colors.borderDefault
             }
 
         val commandOneLine = item.command.lineSequence().firstOrNull().orEmpty().trim()
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .background(CodexTheme.colors.bgSecondary)
                 .clickable(onClick = toggle)
                 .padding(8.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -200,44 +173,44 @@ fun CommandExecutionItem(item: ThreadItem.CommandExecution) {
                     Text(
                         title,
                         style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = CodexTheme.colors.textSecondary,
                     )
                     Spacer(Modifier.width(4.dp))
                     Icon(
                         if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = CodexTheme.colors.textSecondary,
                         modifier = Modifier.size(18.dp)
                     )
                 }
                 Text(
                     commandOneLine,
                     style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = CodexTheme.colors.textSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
         }
         if (expanded) {
-            Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(10.dp)) {
+            Column(Modifier.fillMaxWidth().background(CodexTheme.colors.bgPrimary).padding(10.dp)) {
                 if (item.command.isNotBlank()) {
-                    Text("Command", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                    Text("Command", style = MaterialTheme.typography.labelSmall, color = CodexTheme.colors.textSecondary)
                     Text(
                         item.command,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = CodexTheme.colors.textSecondary
                     )
                 }
 
                 item.aggregatedOutput?.let { out ->
                     if (out.isNotBlank()) {
                         if (item.command.isNotBlank()) Spacer(Modifier.height(8.dp))
-                        Text("Output", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                        Text("Output", style = MaterialTheme.typography.labelSmall, color = CodexTheme.colors.textSecondary)
                         Text(
                             out,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = CodexTheme.colors.textSecondary
                         )
                     }
                 }
@@ -264,7 +237,7 @@ fun PlanUpdateItem(item: ThreadItem.PlanUpdate) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .background(CodexTheme.colors.bgSecondary)
                 .clickable(onClick = toggle)
                 .padding(8.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -272,21 +245,21 @@ fun PlanUpdateItem(item: ThreadItem.PlanUpdate) {
             Text(
                 "To-dos",
                 style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = CodexTheme.colors.textSecondary,
             )
             if (summary.isNotBlank()) {
                 Spacer(Modifier.width(8.dp))
                 Text(
                     summary,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = CodexTheme.colors.textSecondary,
                 )
             }
             Spacer(Modifier.width(4.dp))
             Icon(
                 if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = CodexTheme.colors.textSecondary,
                 modifier = Modifier.size(18.dp)
             )
         }
@@ -330,12 +303,13 @@ fun PlanUpdateItem(item: ThreadItem.PlanUpdate) {
 @Composable
 fun McpToolCallItem(item: ThreadItem.McpToolCall) {
     var expanded by rememberSaveable(item.id) { mutableStateOf(false) }
+    val colors = CodexTheme.colors
     Column {
         val toggle = { expanded = !expanded }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .background(CodexTheme.colors.bgSecondary)
                 .clickable(onClick = toggle)
                 .padding(8.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -343,48 +317,48 @@ fun McpToolCallItem(item: ThreadItem.McpToolCall) {
             Text(
                 "${item.server} :: ${item.tool}",
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = CodexTheme.colors.textSecondary,
                 modifier = Modifier.weight(1f)
             )
             Text(
                 item.status.name,
                 style = MaterialTheme.typography.labelSmall,
                 color = when (item.status) {
-                    McpToolCallStatus.completed -> Color.Green
-                    McpToolCallStatus.failed -> MaterialTheme.colorScheme.error
-                    else -> Color.Yellow
+                    McpToolCallStatus.completed -> colors.accentSuccess
+                    McpToolCallStatus.failed -> colors.accentError
+                    else -> colors.accentWarning
                 }
             )
             Spacer(Modifier.width(6.dp))
             Icon(
                 if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                tint = CodexTheme.colors.textSecondary
             )
         }
 
         if (expanded) {
-            Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(10.dp)) {
+            Column(Modifier.fillMaxWidth().background(CodexTheme.colors.bgPrimary).padding(10.dp)) {
                 if (item.progress.isNotEmpty()) {
-                    Text("Progress", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                    Text("Progress", style = MaterialTheme.typography.labelSmall, color = CodexTheme.colors.textSecondary)
                     item.progress.takeLast(8).forEach { msg ->
-                        Text(msg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground)
+                        Text(msg, style = MaterialTheme.typography.bodySmall, color = CodexTheme.colors.textPrimary)
                     }
                     Spacer(Modifier.height(8.dp))
                 }
 
-                Text("Arguments", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                Text("Arguments", style = MaterialTheme.typography.labelSmall, color = CodexTheme.colors.textSecondary)
                 Text(item.arguments.toString(), style = MaterialTheme.typography.bodySmall)
 
                 item.result?.let { res ->
                     Spacer(Modifier.height(8.dp))
-                    Text("Result", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                    Text("Result", style = MaterialTheme.typography.labelSmall, color = CodexTheme.colors.textSecondary)
                     Text(res.toString(), style = MaterialTheme.typography.bodySmall)
                 }
 
                 item.error?.let { err ->
                     Spacer(Modifier.height(8.dp))
-                    Text("Error", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                    Text("Error", style = MaterialTheme.typography.labelSmall, color = CodexTheme.colors.accentError)
                     Text(err.toString(), style = MaterialTheme.typography.bodySmall)
                 }
             }
@@ -395,20 +369,21 @@ fun McpToolCallItem(item: ThreadItem.McpToolCall) {
 @Composable
 fun FileChangeItem(item: ThreadItem.FileChange) {
     var expanded by rememberSaveable(item.id) { mutableStateOf(false) }
+    val colors = CodexTheme.colors
     Column {
         val toggle = { expanded = !expanded }
         val dotColor =
             when (item.status) {
-                PatchApplyStatus.inProgress -> Color(0xFFF9A825) // yellow
-                PatchApplyStatus.completed -> Color(0xFF2E7D32) // green
-                PatchApplyStatus.failed, PatchApplyStatus.declined -> Color(0xFFC62828) // red
-                PatchApplyStatus.unknown -> MaterialTheme.colorScheme.outline
+                PatchApplyStatus.inProgress -> colors.accentWarning
+                PatchApplyStatus.completed -> colors.accentSuccess
+                PatchApplyStatus.failed, PatchApplyStatus.declined -> colors.accentError
+                PatchApplyStatus.unknown -> colors.borderDefault
             }
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .background(CodexTheme.colors.bgSecondary)
                 .clickable(onClick = toggle)
                 .padding(8.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -422,34 +397,34 @@ fun FileChangeItem(item: ThreadItem.FileChange) {
             Text(
                 "File changes (${item.changes.size})",
                 style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = CodexTheme.colors.textSecondary,
                 modifier = Modifier.weight(1f)
             )
             Spacer(Modifier.width(4.dp))
             Icon(
                 if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = CodexTheme.colors.textSecondary,
                 modifier = Modifier.size(18.dp)
             )
         }
 
         if (expanded) {
-            Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(10.dp)) {
+            Column(Modifier.fillMaxWidth().background(CodexTheme.colors.bgPrimary).padding(10.dp)) {
                 item.changes.forEach { change ->
                     if (change.path.isNotBlank()) {
-                        Text(change.path, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                        Text(change.path, style = MaterialTheme.typography.bodySmall, color = CodexTheme.colors.textSecondary)
                     }
                     if (change.diff.isNotBlank()) {
-                        Text(change.diff, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(change.diff, style = MaterialTheme.typography.bodySmall, color = CodexTheme.colors.textSecondary)
                     }
                     Spacer(Modifier.height(8.dp))
                 }
 
                 item.output?.let { out ->
                     if (out.isNotBlank()) {
-                        Text("Output", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
-                        Text(out, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Output", style = MaterialTheme.typography.labelSmall, color = CodexTheme.colors.textSecondary)
+                        Text(out, style = MaterialTheme.typography.bodySmall, color = CodexTheme.colors.textSecondary)
                     }
                 }
             }
@@ -467,7 +442,7 @@ private fun InfoItem(id: String, title: String, body: String) {
                 Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .background(CodexTheme.colors.bgSecondary)
                     .clickable(onClick = toggle)
                     .padding(8.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -476,14 +451,14 @@ private fun InfoItem(id: String, title: String, body: String) {
                 Text(
                     title,
                     style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = CodexTheme.colors.textSecondary,
                 )
                 if (!expanded && body.isNotBlank()) {
                     Spacer(Modifier.height(2.dp))
                     Text(
                         body,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = CodexTheme.colors.textSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -493,7 +468,7 @@ private fun InfoItem(id: String, title: String, body: String) {
             Icon(
                 if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = CodexTheme.colors.textSecondary,
                 modifier = Modifier.size(18.dp)
             )
         }

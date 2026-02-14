@@ -78,6 +78,7 @@ data class Thread(
     val gitInfo: GitInfo? = null,
     val tokenUsage: ThreadTokenUsage? = null,
     // Client-only preferences (not guaranteed to exist on server Thread schema).
+    val clientName: String? = null,
     val clientModel: String? = null,
     val clientEffort: String? = null,
     val turns: List<Turn> = emptyList()
@@ -144,6 +145,17 @@ data class ThreadStartParams(
 @Serializable
 data class ThreadResumeParams(
     val threadId: String
+)
+
+@Serializable
+data class ThreadArchiveParams(
+    val threadId: String
+)
+
+@Serializable
+data class ThreadNameSetParams(
+    val threadId: String,
+    val name: String,
 )
 
 @Serializable

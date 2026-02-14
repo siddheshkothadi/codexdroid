@@ -20,6 +20,9 @@ interface ThreadDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertThread(thread: ThreadEntity)
 
+    @Query("DELETE FROM threads WHERE connectionId = :connectionId AND id = :threadId")
+    suspend fun deleteThreadById(connectionId: String, threadId: String)
+
     @Query("DELETE FROM threads WHERE connectionId = :connectionId")
     suspend fun deleteThreadsByConnection(connectionId: String)
 }

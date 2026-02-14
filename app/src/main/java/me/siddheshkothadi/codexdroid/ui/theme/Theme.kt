@@ -1,77 +1,72 @@
 package me.siddheshkothadi.codexdroid.ui.theme
 
 import android.app.Activity
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.SideEffect
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.graphics.Color
 import androidx.core.view.WindowCompat
 
-private val CodexDroidDarkColorScheme = darkColorScheme(
-    primary = PureWhite,
-    onPrimary = PitchBlack,
-    primaryContainer = BluePrimaryContainer,
-    onPrimaryContainer = OnBluePrimaryContainer,
-    secondary = SubtitleGray,
-    onSecondary = PureWhite,
-    background = PitchBlack,
-    onBackground = PureWhite,
-    surface = DarkSurface,
-    onSurface = PureWhite,
-    surfaceVariant = DarkSurface,
-    onSurfaceVariant = PureWhite,
-    outline = BorderGray
-)
+private val LocalCodexColors = staticCompositionLocalOf<CodexColors> { LightCodexColors }
 
-private val CodexDroidLightColorScheme = lightColorScheme(
-    primary = LightBluePrimary,
-    onPrimary = PureWhite,
-    primaryContainer = LightBluePrimaryContainer,
-    onPrimaryContainer = OnLightBluePrimaryContainer,
-    secondary = SubtitleGray,
-    onSecondary = PitchBlack,
-    background = PureWhite,
-    onBackground = PitchBlack,
-    surface = LightSurface,
-    onSurface = PitchBlack,
-    surfaceVariant = LightSurface,
-    onSurfaceVariant = PitchBlack,
-    outline = BorderGray.copy(alpha = 0.2f)
-)
+object CodexTheme {
+    val colors: CodexColors
+        @Composable
+        @ReadOnlyComposable
+        get() = LocalCodexColors.current
+}
+
+private fun CodexColors.toMaterialColorScheme(
+    darkTheme: Boolean,
+): ColorScheme {
+    val base =
+        if (darkTheme) darkColorScheme() else lightColorScheme()
+    val inverseColors = if (darkTheme) LightCodexColors else DarkCodexColors
+    return base.copy(
+        primary = accentUi,
+        onPrimary = onAccentAction,
+        primaryContainer = bgSecondary,
+        onPrimaryContainer = textPrimary,
+        inversePrimary = accentUi,
+        secondary = textSecondary,
+        onSecondary = textInverted,
+        secondaryContainer = bgTertiary,
+        onSecondaryContainer = textPrimary,
+        tertiary = accentSuccess,
+        onTertiary = textInverted,
+        tertiaryContainer = bgTertiary,
+        onTertiaryContainer = textPrimary,
+        background = bgPrimary,
+        onBackground = textPrimary,
+        surface = bgPrimary,
+        onSurface = textPrimary,
+        surfaceVariant = bgSecondary,
+        onSurfaceVariant = textSecondary,
+        surfaceTint = accentUi,
+        inverseSurface = inverseColors.bgPrimary,
+        inverseOnSurface = inverseColors.textPrimary,
+        error = accentError,
+        onError = textInverted,
+        errorContainer = bgSecondary,
+        onErrorContainer = textPrimary,
+        outline = borderDefault,
+        outlineVariant = borderSubtle,
+        scrim = Color.Black.copy(alpha = 0.40f),
+    )
+}
 
 @Composable
 fun CodexDroidTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Enable dynamic color by default for Android 12+
-    dynamicColor: Boolean = true,
     content: @Composable () -> Unit
 ) {
-    val context = LocalContext.current
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            if (darkTheme) {
-                dynamicDarkColorScheme(context).copy(
-                    background = PitchBlack,
-                    surface = DarkSurface,
-                    surfaceVariant = DarkSurface,
-                    onBackground = PureWhite,
-                    onSurface = PureWhite,
-                    onSurfaceVariant = PureWhite
-                )
-            } else {
-                dynamicLightColorScheme(context).copy(
-                    background = PureWhite,
-                    surface = LightSurface,
-                    surfaceVariant = LightSurface
-                )
-            }
-        }
-        darkTheme -> CodexDroidDarkColorScheme
-        else -> CodexDroidLightColorScheme
-    }
+    val codexColors = if (darkTheme) DarkCodexColors else LightCodexColors
+    val colorScheme = codexColors.toMaterialColorScheme(darkTheme = darkTheme)
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -82,9 +77,11 @@ fun CodexDroidTheme(
         }
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+    CompositionLocalProvider(LocalCodexColors provides codexColors) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = Typography,
+            content = content
+        )
+    }
 }

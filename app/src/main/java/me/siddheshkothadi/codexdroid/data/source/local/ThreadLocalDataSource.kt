@@ -38,6 +38,10 @@ class ThreadLocalDataSource @Inject constructor(
         threadDao.insertThreads(threads.map { it.toEntity(connectionId) })
     }
 
+    suspend fun deleteThread(connectionId: String, threadId: String) {
+        threadDao.deleteThreadById(connectionId, threadId)
+    }
+
     private fun Thread.toEntity(connectionId: String) =
         ThreadEntity(
             id = id,

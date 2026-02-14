@@ -63,6 +63,20 @@ class CodexApiService @Inject constructor(
         )
     }
 
+    suspend fun archiveThread(baseUrl: String, secret: String?, threadId: String): CodexResponse<EmptyResult> {
+        val client = clientManager.get(baseUrl, secret)
+        return client.send<ThreadArchiveParams, EmptyResult>(
+            CodexRequest("thread/archive", params = ThreadArchiveParams(threadId))
+        )
+    }
+
+    suspend fun setThreadName(baseUrl: String, secret: String?, threadId: String, name: String): CodexResponse<JsonElement> {
+        val client = clientManager.get(baseUrl, secret)
+        return client.send<ThreadNameSetParams, JsonElement>(
+            CodexRequest("thread/name/set", params = ThreadNameSetParams(threadId = threadId, name = name))
+        )
+    }
+
     suspend fun startTurn(baseUrl: String, secret: String?, threadId: String, text: String): CodexResponse<TurnStartResult> {
         val client = clientManager.get(baseUrl, secret)
         val params = TurnStartParams(threadId = threadId, input = listOf(UserInput(text = text)))

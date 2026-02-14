@@ -49,6 +49,7 @@ class ThreadRepositoryImpl @Inject constructor(
                             if (existing.turns.isNotEmpty() && thread.turns.isEmpty()) existing.turns else thread.turns
                         thread.copy(
                             turns = mergedTurns,
+                            clientName = existing.clientName,
                             clientModel = existing.clientModel,
                             clientEffort = existing.clientEffort,
                         )
@@ -64,5 +65,26 @@ class ThreadRepositoryImpl @Inject constructor(
 
     override suspend fun upsertThread(connectionId: String, thread: Thread) {
         localDataSource.upsertThread(connectionId, thread)
+    }
+
+    override suspend fun renameThread(connection: Connection, threadId: String, newName: String) {
+        val normalized = newName.trim()
+        if (normalized.isBlank()) return
+
+        val existing = localDataSource.getThread(connection.id, threadId)
+        if (existing != null) {
+            localDataSource.upsertThread(connection.id, existing.copy(clientName = normalized))
+        }
+
+        runCatching {
+            remoteDataSource.setThreadName(connection, threadId, normalized)
+        }.onFailure { error ->
+            Log.w(tag, "Failed to set thread name on server", error)
+        }
+    }
+
+    override suspend fun archiveThread(connection: Connection, threadId: String) {
+        remoteDataSource.archiveThread(connection, threadId)
+        localDataSource.deleteThread(connection.id, threadId)
     }
 }

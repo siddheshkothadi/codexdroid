@@ -14,4 +14,18 @@ class ThreadRemoteDataSource @Inject constructor(
         val response = apiService.listThreads(connection.baseUrl, connection.secret)
         return response.result?.data ?: emptyList()
     }
+
+    suspend fun archiveThread(connection: Connection, threadId: String) {
+        val response = apiService.archiveThread(connection.baseUrl, connection.secret, threadId)
+        response.error?.let { error ->
+            throw IllegalStateException(error.message.ifBlank { "Failed to archive thread." })
+        }
+    }
+
+    suspend fun setThreadName(connection: Connection, threadId: String, name: String) {
+        val response = apiService.setThreadName(connection.baseUrl, connection.secret, threadId, name)
+        response.error?.let { error ->
+            throw IllegalStateException(error.message.ifBlank { "Failed to rename thread." })
+        }
+    }
 }

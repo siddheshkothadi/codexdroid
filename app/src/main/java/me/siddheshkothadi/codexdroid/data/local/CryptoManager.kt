@@ -5,6 +5,7 @@ import android.util.Base64
 import android.util.Log
 import com.google.crypto.tink.Aead
 import com.google.crypto.tink.KeyTemplates
+import com.google.crypto.tink.RegistryConfiguration
 import com.google.crypto.tink.aead.AeadConfig
 import com.google.crypto.tink.integration.android.AndroidKeysetManager
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -32,7 +33,7 @@ class CryptoManager @Inject constructor(
                 .withMasterKeyUri(masterKeyUri)
                 .build()
                 .keysetHandle
-            return keysetHandle.getPrimitive(Aead::class.java)
+            return keysetHandle.getPrimitive(RegistryConfiguration.get(), Aead::class.java)
         }
 
         fun buildWithoutMasterKey(): Aead {
@@ -41,7 +42,7 @@ class CryptoManager @Inject constructor(
                 .withKeyTemplate(KeyTemplates.get("AES256_GCM"))
                 .build()
                 .keysetHandle
-            return keysetHandle.getPrimitive(Aead::class.java)
+            return keysetHandle.getPrimitive(RegistryConfiguration.get(), Aead::class.java)
         }
 
         fun clearKeysetPrefs() {

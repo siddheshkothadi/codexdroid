@@ -40,6 +40,15 @@ android {
     buildFeatures {
         compose = true
     }
+    packaging {
+        jniLibs {
+            // Avoid noisy strip warnings for upstream libs that do not contain strippable symbols.
+            keepDebugSymbols += setOf(
+                "**/libandroidx.graphics.path.so",
+                "**/libdatastore_shared_counter.so",
+            )
+        }
+    }
 }
 
 dependencies {

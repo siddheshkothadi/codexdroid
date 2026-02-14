@@ -1,5 +1,6 @@
 package me.siddheshkothadi.codexdroid.ui.components
 
+import android.content.ClipData
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -22,7 +23,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.ui.draw.clip
@@ -31,7 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.ui.text.AnnotatedString
+import kotlinx.coroutines.launch
 import me.siddheshkothadi.codexdroid.codex.Thread
 import me.siddheshkothadi.codexdroid.codex.ConnectionStatus
 import me.siddheshkothadi.codexdroid.codex.TurnStatus
@@ -73,7 +75,8 @@ fun CodexDroidDrawerContent(
                         var collapsedGroups by rememberSaveable { mutableStateOf(emptyList<String>()) }
                         val collapsedSet = remember(collapsedGroups) { collapsedGroups.toSet() }
                         var showCwdDialog by remember { mutableStateOf<String?>(null) }
-                        val clipboard = LocalClipboardManager.current
+                        val clipboard = LocalClipboard.current
+                        val scope = rememberCoroutineScope()
 
                         val grouped =
                             remember(historyState.threads) {
@@ -226,7 +229,11 @@ fun CodexDroidDrawerContent(
                                 confirmButton = {
                                     TextButton(
                                         onClick = {
-                                            clipboard.setText(AnnotatedString(cwd))
+                                            scope.launch {
+                                                clipboard.setClipEntry(
+                                                    ClipEntry(ClipData.newPlainText("cwd", cwd))
+                                                )
+                                            }
                                             showCwdDialog = null
                                         }
                                     ) { Text("Copy path") }

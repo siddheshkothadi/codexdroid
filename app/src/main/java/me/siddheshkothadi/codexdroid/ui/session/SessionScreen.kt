@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.animation.core.LinearEasing
@@ -662,7 +663,10 @@ private fun ModelDropdown(
             enabled = models.isNotEmpty(),
             label = { Text("Model") },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.menuAnchor().fillMaxWidth()
+            modifier =
+                Modifier
+                    .menuAnchor(type = MenuAnchorType.PrimaryNotEditable, enabled = models.isNotEmpty())
+                    .fillMaxWidth()
         )
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             if (models.isEmpty()) {
@@ -719,7 +723,10 @@ private fun EffortDropdown(
             enabled = enabled,
             label = { Text("Reasoning effort") },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.menuAnchor().fillMaxWidth()
+            modifier =
+                Modifier
+                    .menuAnchor(type = MenuAnchorType.PrimaryNotEditable, enabled = enabled)
+                    .fillMaxWidth()
         )
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             efforts.forEach { effort ->
@@ -1092,7 +1099,7 @@ private fun TurnSpeechControlRow(
                 Triple(Icons.Default.PlayArrow, "Resume", { turnSpeechController.resume() })
             TurnSpeechPlaybackState.Idle ->
                 Triple(
-                    Icons.Default.VolumeUp,
+                    Icons.AutoMirrored.Filled.VolumeUp,
                     "Listen",
                     { turnSpeechController.start(entry.turnId, entry.speechText) }
                 )

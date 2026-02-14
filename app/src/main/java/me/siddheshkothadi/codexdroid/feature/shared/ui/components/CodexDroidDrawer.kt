@@ -172,14 +172,22 @@ fun CodexDroidDrawerContent(
                                 val isCollapsed = collapsedSet.contains(cwd)
                                 val folderLabel = workspaceFolderName(cwd).ifBlank { cwd }
                                 val folderThreads = grouped[cwd].orEmpty()
+                                val toggleFolderCollapse = {
+                                    val next =
+                                        collapsedSet.toMutableSet().apply {
+                                            if (isCollapsed) remove(cwd) else add(cwd)
+                                        }
+                                    collapsedGroups = next.toList()
+                                }
 
                                 item(key = "cwd:$cwd") {
                                     Surface(
                                         modifier =
                                             Modifier
                                                 .fillMaxWidth()
+                                                .clip(RoundedCornerShape(16.dp))
                                                 .combinedClickable(
-                                                    onClick = {},
+                                                    onClick = toggleFolderCollapse,
                                                     onLongClick = {
                                                         if (cwd != "(no cwd)" && folderThreads.isNotEmpty()) {
                                                             deleteCwdTarget = cwd
@@ -217,13 +225,7 @@ fun CodexDroidDrawerContent(
                                                 color = actionButtonBackground
                                             ) {
                                                 IconButton(
-                                                    onClick = {
-                                                        val next =
-                                                            collapsedSet.toMutableSet().apply {
-                                                                if (isCollapsed) remove(cwd) else add(cwd)
-                                                            }
-                                                        collapsedGroups = next.toList()
-                                                    }
+                                                    onClick = toggleFolderCollapse
                                                 ) {
                                                     Icon(
                                                         imageVector =

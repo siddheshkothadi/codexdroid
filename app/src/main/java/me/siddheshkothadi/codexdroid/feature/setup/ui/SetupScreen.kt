@@ -19,14 +19,16 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import me.siddheshkothadi.codexdroid.domain.model.Connection
+import me.siddheshkothadi.codexdroid.ui.theme.CodexTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SetupScreen(
-    onSaveClick: (name: String, url: String, secret: String) -> Unit,
+    onSaveClick: (name: String, url: String, secret: String, sarvamApiKey: String) -> Unit,
     onBackClick: () -> Unit = {},
     canNavigateBack: Boolean = true,
     initialConnection: Connection? = null,
+    initialSarvamApiKey: String = "",
     isLoading: Boolean = false,
     errorMessage: String? = null,
     modifier: Modifier = Modifier
@@ -34,7 +36,9 @@ fun SetupScreen(
     var name by rememberSaveable { mutableStateOf("") }
     var url by rememberSaveable { mutableStateOf("") }
     var secret by rememberSaveable { mutableStateOf("") }
+    var sarvamApiKey by rememberSaveable { mutableStateOf("") }
     var isSecretVisible by rememberSaveable { mutableStateOf(false) }
+    var isSarvamApiKeyVisible by rememberSaveable { mutableStateOf(false) }
     
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
@@ -44,6 +48,9 @@ fun SetupScreen(
             url = initialConnection.baseUrl
             secret = initialConnection.secret
         }
+    }
+    LaunchedEffect(initialSarvamApiKey) {
+        sarvamApiKey = initialSarvamApiKey
     }
 
     val isEditMode = initialConnection != null
@@ -65,7 +72,7 @@ fun SetupScreen(
         },
         bottomBar = {
             Surface(
-                color = MaterialTheme.colorScheme.background,
+                color = CodexTheme.colors.bgPrimary,
                 tonalElevation = 2.dp,
                 shadowElevation = 8.dp
             ) {
@@ -81,7 +88,7 @@ fun SetupScreen(
                         CircularProgressIndicator()
                     } else {
                         Button(
-                            onClick = { onSaveClick(name, url, secret) },
+                            onClick = { onSaveClick(name, url, secret, sarvamApiKey) },
                             modifier = Modifier.fillMaxWidth(),
                             enabled = url.isNotBlank() && name.isNotBlank()
                         ) {
@@ -104,7 +111,7 @@ fun SetupScreen(
             if (errorMessage != null) {
                 Text(
                     text = errorMessage,
-                    color = MaterialTheme.colorScheme.error,
+                    color = CodexTheme.colors.accentError,
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
@@ -121,7 +128,7 @@ fun SetupScreen(
             OutlinedTextField(
                 value = url,
                 onValueChange = { url = it },
-                label = { Text("Base URL (e.g. http://192.168.1.3:8080/rpc)") },
+                label = { Text("Base URL (e.g. http://192.168.1.3:8080)") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 enabled = !isLoading
@@ -144,6 +151,37 @@ fun SetupScreen(
 
                     IconButton(onClick = { isSecretVisible = !isSecretVisible }) {
                         Icon(imageVector = image, contentDescription = if (isSecretVisible) "Hide secret" else "Show secret")
+                    }
+                }
+            )
+
+            OutlinedTextField(
+                value = sarvamApiKey,
+                onValueChange = { sarvamApiKey = it },
+                label = { Text("Sarvam API Key (Optional)") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = !isLoading,
+                visualTransformation = if (isSarvamApiKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                trailingIcon = {
+                    val image =
+                        if (isSarvamApiKeyVisible) {
+                            Icons.Filled.Visibility
+                        } else {
+                            Icons.Filled.VisibilityOff
+                        }
+
+                    IconButton(onClick = { isSarvamApiKeyVisible = !isSarvamApiKeyVisible }) {
+                        Icon(
+                            imageVector = image,
+                            contentDescription =
+                                if (isSarvamApiKeyVisible) {
+                                    "Hide Sarvam API key"
+                                } else {
+                                    "Show Sarvam API key"
+                                }
+                        )
                     }
                 }
             )

@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 import me.siddheshkothadi.codexdroid.feature.session.ui.SessionScreen
 import me.siddheshkothadi.codexdroid.feature.session.ui.SessionViewModel
+import me.siddheshkothadi.codexdroid.feature.settings.ui.SettingsScreen
 import me.siddheshkothadi.codexdroid.feature.setup.ui.SetupScreen
 import me.siddheshkothadi.codexdroid.feature.setup.ui.SetupUiState
 import me.siddheshkothadi.codexdroid.feature.setup.ui.SetupViewModel
@@ -40,6 +41,7 @@ sealed class Screen(val route: String) {
             return if (parts.isEmpty()) "session" else "session?" + parts.joinToString("&")
         }
     }
+    object Settings : Screen("settings")
 }
 
 @Composable
@@ -85,6 +87,7 @@ fun NavGraph(
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
             val connectionToEdit by viewModel.connectionToEdit.collectAsStateWithLifecycle()
             val connections by viewModel.connections.collectAsStateWithLifecycle()
+            val sarvamApiKey by viewModel.sarvamApiKey.collectAsStateWithLifecycle()
 
             LaunchedEffect(uiState) {
                 if (uiState is SetupUiState.Success) {
@@ -95,14 +98,15 @@ fun NavGraph(
             }
 
             SetupScreen(
-                onSaveClick = { name, url, secret ->
-                    viewModel.saveConnection(name, url, secret)
+                onSaveClick = { name, url, secret, sarvamApiKeyInput ->
+                    viewModel.saveConnection(name, url, secret, sarvamApiKeyInput)
                 },
                 onBackClick = {
                     navController.popBackStack()
                 },
                 canNavigateBack = connections.isNotEmpty(),
                 initialConnection = connectionToEdit,
+                initialSarvamApiKey = sarvamApiKey,
                 isLoading = uiState is SetupUiState.Loading,
                 errorMessage = (uiState as? SetupUiState.Error)?.message
             )
@@ -154,7 +158,15 @@ fun NavGraph(
                     navController.navigate(Screen.Setup.createRoute()) {
                         popUpTo(Screen.Session.route) { inclusive = true }
                     }
+                },
+                onSettingsClick = {
+                    navController.navigate(Screen.Settings.route)
                 }
+            )
+        }
+        composable(route = Screen.Settings.route) {
+            SettingsScreen(
+                onBackClick = { navController.popBackStack() }
             )
         }
     }

@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -51,6 +52,7 @@ data class SessionUiState(
     val selectedModelId: String? = null,
     val selectedEffort: String? = null,
     val controlsError: String? = null,
+    val ttsNotice: String? = null,
 )
 
 data class ModelOptionUi(
@@ -82,6 +84,8 @@ class SessionViewModel @Inject constructor(
     private val getThreadUseCase: GetThreadUseCase,
     private val observeThreadUseCase: ObserveThreadUseCase,
     private val upsertThreadUseCase: UpsertThreadUseCase,
+    private val renameThreadUseCase: RenameThreadUseCase,
+    private val archiveThreadUseCase: ArchiveThreadUseCase,
     private val startThreadUseCase: StartThreadUseCase,
     private val resumeThreadUseCase: ResumeThreadUseCase,
     private val startTurnUseCase: StartTurnUseCase,
@@ -95,6 +99,7 @@ class SessionViewModel @Inject constructor(
     private val pingConnectionUseCase: PingConnectionUseCase,
     private val markConnectionUsedUseCase: MarkConnectionUsedUseCase,
     private val deleteConnectionUseCase: DeleteConnectionUseCase,
+    private val synthesizeSarvamSpeechUseCase: SynthesizeSarvamSpeechUseCase,
     private val eventRouter: CodexEventRouter,
 ) : ViewModel() {
     private val tag = "SessionViewModel"
@@ -105,6 +110,8 @@ class SessionViewModel @Inject constructor(
     private var autoSelectedConnectionId: String? = null
     private var didInitialHistorySyncForConnectionId: String? = null
     private var lastControlsKey: String? = null
+    private val ttsNoticeLock = Any()
+    private var didShowSarvamFallbackNotice: Boolean = false
     private val pendingRequestQueue: PendingRequestQueue = InMemoryPendingRequestQueue()
 
     private val _uiState = MutableStateFlow(SessionUiState())
@@ -404,6 +411,34 @@ class SessionViewModel @Inject constructor(
         maybeShowNextPending()
     }
 
+    suspend fun synthesizeTurnSpeechOrNull(text: String): ByteArray? {
+        return try {
+            synthesizeSarvamSpeechUseCase(text).audioBytes
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            maybePublishSarvamFallbackNotice()
+            null
+        }
+    }
+
+    fun onTtsNoticeShown() {
+        _uiState.update { it.copy(ttsNotice = null) }
+    }
+
+    private fun maybePublishSarvamFallbackNotice() {
+        val shouldNotify =
+            synchronized(ttsNoticeLock) {
+                if (didShowSarvamFallbackNotice) false
+                else {
+                    didShowSarvamFallbackNotice = true
+                    true
+                }
+            }
+        if (!shouldNotify) return
+        _uiState.update { it.copy(ttsNotice = "Sarvam unavailable. Using Android TTS.") }
+    }
+
     // --- Actions ---
 
     fun sendMessage(text: String) {
@@ -522,6 +557,96 @@ class SessionViewModel @Inject constructor(
         }
     }
 
+    fun renameThread(threadId: String, newName: String) {
+        val connection = connections.value.firstOrNull() ?: return
+        val normalizedName = newName.trim()
+        if (normalizedName.isBlank()) return
+
+        viewModelScope.launch {
+            try {
+                renameThreadUseCase(connection, threadId, normalizedName)
+                refreshThreadsUseCase(connection)
+            } catch (e: Exception) {
+                Log.w(tag, "Failed to rename thread", e)
+                _uiState.update { it.copy(error = e.message ?: "Failed to rename thread.") }
+            }
+        }
+    }
+
+    fun archiveThread(thread: Thread) {
+        val connection = connections.value.firstOrNull() ?: return
+        viewModelScope.launch {
+            try {
+                archiveThreadUseCase(connection, thread.id)
+                if (_uiState.value.currentThread?.id == thread.id) {
+                    clearCurrentThreadSelection()
+                }
+                refreshThreadsUseCase(connection)
+            } catch (e: Exception) {
+                Log.w(tag, "Failed to archive thread", e)
+                _uiState.update { it.copy(error = e.message ?: "Failed to delete thread.") }
+            }
+        }
+    }
+
+    fun archiveThreadsInDirectory(cwd: String) {
+        val connection = connections.value.firstOrNull() ?: return
+        val targetCwd = cwd.trim()
+        if (targetCwd.isBlank()) return
+
+        viewModelScope.launch {
+            val threadsInDirectory =
+                _uiState.value.historyThreads.filter { thread ->
+                    thread.cwd.trim() == targetCwd
+                }
+            if (threadsInDirectory.isEmpty()) return@launch
+
+            var failed = 0
+            threadsInDirectory.forEach { thread ->
+                try {
+                    archiveThreadUseCase(connection, thread.id)
+                } catch (e: Exception) {
+                    failed += 1
+                    Log.w(tag, "Failed to archive thread ${thread.id} in directory $targetCwd", e)
+                }
+            }
+
+            if (threadsInDirectory.any { it.id == _uiState.value.currentThread?.id }) {
+                clearCurrentThreadSelection()
+            }
+
+            try {
+                refreshThreadsUseCase(connection)
+            } catch (e: Exception) {
+                Log.w(tag, "Failed to refresh threads after directory delete", e)
+                _uiState.update { it.copy(error = e.message ?: "Failed to refresh sessions.") }
+                return@launch
+            }
+
+            if (failed > 0) {
+                _uiState.update {
+                    it.copy(error = "Deleted ${threadsInDirectory.size - failed}/${threadsInDirectory.size} sessions.")
+                }
+            }
+        }
+    }
+
+    private fun clearCurrentThreadSelection() {
+        pollJob?.cancel()
+        selectedThreadId = null
+        observeThreadJob?.cancel()
+        observeThreadJob = null
+        _uiState.update {
+            it.copy(
+                currentThread = null,
+                activeTurnId = null,
+                isSending = false,
+                pendingUserMessage = null,
+                scrollToTurnId = null,
+            )
+        }
+    }
+
     private fun selectThreadId(connectionId: String, threadId: String) {
         selectedThreadId = threadId
         observeThreadJob?.cancel()
@@ -631,6 +756,7 @@ class SessionViewModel @Inject constructor(
                     connection.id,
                     serverThread.copy(
                         turns = mergedTurns,
+                        clientName = existing?.clientName,
                         clientModel = existing?.clientModel,
                         clientEffort = existing?.clientEffort,
                     )

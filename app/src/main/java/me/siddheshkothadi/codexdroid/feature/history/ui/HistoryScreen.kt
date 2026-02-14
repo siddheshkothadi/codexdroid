@@ -15,6 +15,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import me.siddheshkothadi.codexdroid.feature.shared.ui.components.CodexDroidDrawerContent
+import me.siddheshkothadi.codexdroid.ui.theme.CodexTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,6 +57,9 @@ fun HistoryScreen(
                 },
                 onSetupClick = {
                     onAddConnectionClick()
+                    scope.launch { drawerState.close() }
+                },
+                onSettingsClick = {
                     scope.launch { drawerState.close() }
                 },
                 connectionStatus = connectionStatus,
@@ -104,7 +108,7 @@ fun HistoryScreen(
                                 Text(
                                     "Select a thread from the menu to view details",
                                     style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = CodexTheme.colors.textSecondary
                                 )
                             }
                         }
@@ -117,12 +121,13 @@ fun HistoryScreen(
 
 @Composable
 private fun ConnectionDot(status: me.siddheshkothadi.codexdroid.codex.ConnectionStatus) {
+    val colors = CodexTheme.colors
     val color =
         when (status) {
-            me.siddheshkothadi.codexdroid.codex.ConnectionStatus.Healthy -> Color(0xFF2E7D32)
-            me.siddheshkothadi.codexdroid.codex.ConnectionStatus.Unhealthy -> Color(0xFFC62828)
-            me.siddheshkothadi.codexdroid.codex.ConnectionStatus.Checking -> MaterialTheme.colorScheme.outline
-            me.siddheshkothadi.codexdroid.codex.ConnectionStatus.Unknown -> MaterialTheme.colorScheme.outline
+            me.siddheshkothadi.codexdroid.codex.ConnectionStatus.Healthy -> colors.accentSuccess
+            me.siddheshkothadi.codexdroid.codex.ConnectionStatus.Unhealthy -> colors.accentError
+            me.siddheshkothadi.codexdroid.codex.ConnectionStatus.Checking -> colors.borderDefault
+            me.siddheshkothadi.codexdroid.codex.ConnectionStatus.Unknown -> colors.borderDefault
         }
     Box(
         modifier = Modifier
@@ -140,7 +145,7 @@ private fun HistorySkeleton() {
                     .fillMaxWidth()
                     .height(24.dp),
                 shape = MaterialTheme.shapes.small,
-                color = MaterialTheme.colorScheme.surfaceVariant
+                color = CodexTheme.colors.bgSecondary
             ) {}
             Spacer(Modifier.height(12.dp))
         }

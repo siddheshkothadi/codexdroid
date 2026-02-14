@@ -1,21 +1,24 @@
 package me.siddheshkothadi.codexdroid.feature.shared.ui.components
 
-import android.content.ClipData
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -23,22 +26,19 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.ClipEntry
-import androidx.compose.ui.platform.LocalClipboard
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import kotlinx.coroutines.launch
 import me.siddheshkothadi.codexdroid.codex.Thread
 import me.siddheshkothadi.codexdroid.codex.ConnectionStatus
 import me.siddheshkothadi.codexdroid.codex.TurnStatus
 import me.siddheshkothadi.codexdroid.domain.model.Connection
 import me.siddheshkothadi.codexdroid.feature.history.ui.HistoryUiState
+import me.siddheshkothadi.codexdroid.ui.theme.CodexTheme
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -49,13 +49,21 @@ fun CodexDroidDrawerContent(
     onConnectionSelect: (Connection) -> Unit,
     onEditClick: (String) -> Unit,
     onDeleteClick: (String) -> Unit,
+    onThreadRename: (Thread, String) -> Unit = { _, _ -> },
+    onThreadDelete: (Thread) -> Unit = {},
+    onStartThreadInCwd: (String) -> Unit = {},
+    onDeleteThreadsInCwd: (String) -> Unit = {},
     onSetupClick: () -> Unit,
+    onSettingsClick: () -> Unit = {},
     modifier: Modifier = Modifier,
     activeThreadId: String? = null,
     connectionStatus: ConnectionStatus = ConnectionStatus.Unknown,
     isSyncing: Boolean = false,
 ) {
-    ModalDrawerSheet(modifier = modifier) {
+    ModalDrawerSheet(
+        modifier = modifier,
+        drawerContainerColor = CodexTheme.colors.bgPrimary
+    ) {
         Column(modifier = Modifier.fillMaxSize()) {
             // History List (90% height approximately)
             Box(modifier = Modifier.weight(0.9f)) {
@@ -72,11 +80,15 @@ fun CodexDroidDrawerContent(
                     }
                     is HistoryUiState.Success -> {
                         var searchQuery by rememberSaveable { mutableStateOf("") }
-                        var collapsedGroups by rememberSaveable { mutableStateOf(emptyList<String>()) }
-                        val collapsedSet = remember(collapsedGroups) { collapsedGroups.toSet() }
-                        var showCwdDialog by remember { mutableStateOf<String?>(null) }
-                        val clipboard = LocalClipboard.current
-                        val scope = rememberCoroutineScope()
+                        var threadMenuTargetId by rememberSaveable { mutableStateOf<String?>(null) }
+                        var renamingThreadId by rememberSaveable { mutableStateOf<String?>(null) }
+                        var renameDraft by rememberSaveable { mutableStateOf("") }
+                        var deleteCwdTarget by rememberSaveable { mutableStateOf<String?>(null) }
+                        val isDark = isSystemInDarkTheme()
+                        val actionButtonBackground =
+                            if (isDark) CodexTheme.colors.bgSecondary else CodexTheme.colors.inputButtonBackground
+                        val actionButtonIcon =
+                            if (isDark) CodexTheme.colors.textSecondary else CodexTheme.colors.inputButtonContent
 
                         val grouped =
                             remember(historyState.threads) {
@@ -88,6 +100,29 @@ fun CodexDroidDrawerContent(
                             remember(grouped) {
                                 grouped.keys.sortedWith(compareBy<String> { it == "(no cwd)" }.thenBy { it })
                             }
+                        val activeThreadCwd =
+                            remember(historyState.threads, activeThreadId) {
+                                historyState.threads.firstOrNull { it.id == activeThreadId }?.let { activeThread ->
+                                    activeThread.cwd.takeIf { it.isNotBlank() } ?: "(no cwd)"
+                                }
+                            }
+                        val defaultCollapsedGroups =
+                            remember(sortedKeys, activeThreadCwd) {
+                                if (activeThreadCwd == null) sortedKeys
+                                else sortedKeys.filter { key -> key != activeThreadCwd }
+                            }
+                        val collapseSeed = remember(sortedKeys, activeThreadCwd) {
+                            buildString {
+                                append(activeThreadCwd.orEmpty())
+                                append('|')
+                                append(sortedKeys.joinToString(separator = "|"))
+                            }
+                        }
+                        var collapsedGroups by
+                            rememberSaveable(collapseSeed) {
+                                mutableStateOf(defaultCollapsedGroups)
+                            }
+                        val collapsedSet = remember(collapsedGroups) { collapsedGroups.toSet() }
 
                         val query = searchQuery.trim().lowercase()
                         val filteredKeys =
@@ -101,25 +136,29 @@ fun CodexDroidDrawerContent(
                                             grouped[cwd]
                                                 .orEmpty()
                                                 .any { t ->
+                                                    threadDisplayName(t).lowercase().contains(query) ||
                                                     t.preview.lowercase().contains(query) ||
                                                         t.id.lowercase().contains(query)
                                                 }
                                     }
                                 }
                             }
+                        val threadIds = remember(historyState.threads) { historyState.threads.map { it.id }.toSet() }
+                        LaunchedEffect(threadIds, threadMenuTargetId, renamingThreadId) {
+                            if (threadMenuTargetId != null && !threadIds.contains(threadMenuTargetId)) {
+                                threadMenuTargetId = null
+                            }
+                            if (renamingThreadId != null && !threadIds.contains(renamingThreadId)) {
+                                renamingThreadId = null
+                                renameDraft = ""
+                            }
+                        }
 
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(16.dp)
                         ) {
                             item {
-                                Text(
-                                    text = "Recent Threads",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-
                                 DrawerSearchField(
                                     value = searchQuery,
                                     onValueChange = { searchQuery = it },
@@ -132,80 +171,248 @@ fun CodexDroidDrawerContent(
                             filteredKeys.forEach { cwd ->
                                 val isCollapsed = collapsedSet.contains(cwd)
                                 val folderLabel = workspaceFolderName(cwd).ifBlank { cwd }
+                                val folderThreads = grouped[cwd].orEmpty()
 
                                 item(key = "cwd:$cwd") {
-                                    Row(
+                                    Surface(
                                         modifier =
                                             Modifier
                                                 .fillMaxWidth()
                                                 .combinedClickable(
+                                                    onClick = {},
+                                                    onLongClick = {
+                                                        if (cwd != "(no cwd)" && folderThreads.isNotEmpty()) {
+                                                            deleteCwdTarget = cwd
+                                                        }
+                                                    }
+                                                ),
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = Color.Transparent
+                                    ) {
+                                        Row(
+                                            modifier =
+                                                Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Folder,
+                                                contentDescription = null,
+                                                tint = CodexTheme.colors.accentUi.copy(alpha = 0.78f),
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                            Spacer(Modifier.width(10.dp))
+                                            Text(
+                                                text = folderLabel,
+                                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                                                color = CodexTheme.colors.textPrimary,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            Surface(
+                                                modifier = Modifier.size(32.dp),
+                                                shape = CircleShape,
+                                                color = actionButtonBackground
+                                            ) {
+                                                IconButton(
                                                     onClick = {
                                                         val next =
                                                             collapsedSet.toMutableSet().apply {
                                                                 if (isCollapsed) remove(cwd) else add(cwd)
                                                             }
                                                         collapsedGroups = next.toList()
-                                                    },
-                                                    onLongClick = {
-                                                        if (cwd != "(no cwd)") showCwdDialog = cwd
                                                     }
-                                                )
-                                                .padding(vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Folder,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(
-                                            text = folderLabel,
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        Icon(
-                                            imageVector = if (isCollapsed) Icons.Default.ExpandMore else Icons.Default.ExpandLess,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
+                                                ) {
+                                                    Icon(
+                                                        imageVector =
+                                                            if (isCollapsed) Icons.Default.ExpandMore
+                                                            else Icons.Default.ExpandLess,
+                                                        contentDescription =
+                                                            if (isCollapsed) "Expand folder"
+                                                            else "Collapse folder",
+                                                        tint = actionButtonIcon
+                                                    )
+                                                }
+                                            }
+                                            Spacer(Modifier.width(6.dp))
+                                            Surface(
+                                                modifier = Modifier.size(32.dp),
+                                                shape = CircleShape,
+                                                color = actionButtonBackground
+                                            ) {
+                                                val canStartInFolder = cwd != "(no cwd)"
+                                                IconButton(
+                                                    enabled = canStartInFolder,
+                                                    onClick = {
+                                                        if (canStartInFolder) {
+                                                            onStartThreadInCwd(cwd)
+                                                        }
+                                                    }
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Add,
+                                                        contentDescription = "Start session in folder",
+                                                        tint = actionButtonIcon
+                                                    )
+                                                }
+                                            }
+                                        }
                                     }
                                     Spacer(modifier = Modifier.height(8.dp))
                                 }
 
                                 if (!isCollapsed) {
-                                    val threads = grouped[cwd].orEmpty()
-                                    items(threads, key = { it.id }) { thread ->
+                                    items(folderThreads, key = { it.id }) { thread ->
                                         val hasRunningTurn =
                                             remember(thread.turns) {
                                                 thread.turns.any { turn -> turn.status == TurnStatus.inProgress }
                                             }
-                                        NavigationDrawerItem(
-                                            label = {
-                                                Text(
-                                                    text = thread.preview.ifBlank { "Untitled Thread" },
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                            },
-                                            badge =
-                                                if (hasRunningTurn) {
-                                                    {
-                                                        CircularProgressIndicator(
-                                                            modifier = Modifier.size(14.dp),
-                                                            strokeWidth = 2.dp
+                                        val isRenaming = renamingThreadId == thread.id
+                                        Box(modifier = Modifier.fillMaxWidth()) {
+                                            if (isRenaming) {
+                                                Row(
+                                                    modifier =
+                                                        Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(NavigationDrawerItemDefaults.ItemPadding),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    OutlinedTextField(
+                                                        value = renameDraft,
+                                                        onValueChange = { renameDraft = it },
+                                                        singleLine = true,
+                                                        modifier = Modifier.weight(1f),
+                                                        placeholder = { Text("New name") }
+                                                    )
+                                                    Spacer(Modifier.width(8.dp))
+                                                    Surface(
+                                                        modifier = Modifier.size(34.dp),
+                                                        shape = CircleShape,
+                                                        color = CodexTheme.colors.bgSecondary
+                                                    ) {
+                                                        IconButton(
+                                                            onClick = {
+                                                                renamingThreadId = null
+                                                                renameDraft = ""
+                                                            }
+                                                        ) {
+                                                            Icon(
+                                                                Icons.Default.Close,
+                                                                contentDescription = "Cancel rename",
+                                                                tint = CodexTheme.colors.textSecondary
+                                                            )
+                                                        }
+                                                    }
+                                                    Spacer(Modifier.width(6.dp))
+                                                    Surface(
+                                                        modifier = Modifier.size(34.dp),
+                                                        shape = CircleShape,
+                                                        color = CodexTheme.colors.bgSecondary
+                                                    ) {
+                                                        IconButton(
+                                                            onClick = {
+                                                                val normalized = renameDraft.trim()
+                                                                if (normalized.isNotBlank()) {
+                                                                    onThreadRename(thread, normalized)
+                                                                }
+                                                                renamingThreadId = null
+                                                                renameDraft = ""
+                                                            }
+                                                        ) {
+                                                            Icon(
+                                                                Icons.Default.Check,
+                                                                contentDescription = "Save thread name",
+                                                                tint = CodexTheme.colors.textSecondary
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            } else {
+                                                Surface(
+                                                    modifier =
+                                                        Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(NavigationDrawerItemDefaults.ItemPadding)
+                                                            .clip(RoundedCornerShape(28.dp))
+                                                            .combinedClickable(
+                                                                onClick = {
+                                                                    threadMenuTargetId = null
+                                                                    renamingThreadId = null
+                                                                    onThreadClick(thread)
+                                                                },
+                                                                onLongClick = {
+                                                                    threadMenuTargetId = thread.id
+                                                                }
+                                                            ),
+                                                    color =
+                                                        if (thread.id == activeThreadId) {
+                                                            CodexTheme.colors.bgSecondary
+                                                        } else {
+                                                            Color.Transparent
+                                                        }
+                                                ) {
+                                                    Row(
+                                                        modifier =
+                                                            Modifier
+                                                                .fillMaxWidth()
+                                                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Box(
+                                                            modifier = Modifier.width(20.dp),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            if (hasRunningTurn) {
+                                                                CircularProgressIndicator(
+                                                                    modifier = Modifier.size(14.dp),
+                                                                    strokeWidth = 2.dp
+                                                                )
+                                                            }
+                                                        }
+                                                        Spacer(Modifier.width(10.dp))
+                                                        Text(
+                                                            text = threadDisplayLabel(thread),
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis,
+                                                            color = CodexTheme.colors.textPrimary,
+                                                            fontWeight = FontWeight.Medium,
+                                                            modifier = Modifier.weight(1f)
                                                         )
                                                     }
-                                                } else {
-                                                    null
-                                                },
-                                            selected = thread.id == activeThreadId,
-                                            onClick = { onThreadClick(thread) },
-                                            modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                                        )
+                                                }
+                                            }
+
+                                            DropdownMenu(
+                                                expanded = threadMenuTargetId == thread.id,
+                                                onDismissRequest = { threadMenuTargetId = null }
+                                            ) {
+                                                DropdownMenuItem(
+                                                    text = { Text("Rename") },
+                                                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                                                    onClick = {
+                                                        threadMenuTargetId = null
+                                                        renamingThreadId = thread.id
+                                                        renameDraft =
+                                                            thread.clientName?.takeIf { it.isNotBlank() }
+                                                                ?: thread.preview
+                                                    }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text("Delete") },
+                                                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                                                    onClick = {
+                                                        threadMenuTargetId = null
+                                                        if (renamingThreadId == thread.id) {
+                                                            renamingThreadId = null
+                                                            renameDraft = ""
+                                                        }
+                                                        onThreadDelete(thread)
+                                                    }
+                                                )
+                                            }
+                                        }
                                     }
 
                                     item(key = "cwd:spacer:$cwd") {
@@ -215,34 +422,39 @@ fun CodexDroidDrawerContent(
                             }
                         }
 
-                        showCwdDialog?.let { cwd ->
+                        deleteCwdTarget?.let { cwd ->
+                            val threadCount = grouped[cwd].orEmpty().size
+                            val folderName = workspaceFolderName(cwd).ifBlank { cwd }
                             AlertDialog(
-                                onDismissRequest = { showCwdDialog = null },
-                                title = { Text(workspaceFolderName(cwd).ifBlank { "Workspace" }) },
+                                onDismissRequest = { deleteCwdTarget = null },
+                                title = { Text("Delete all sessions?") },
                                 text = {
                                     Text(
-                                        text = cwd,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        "Delete $threadCount session(s) in \"$folderName\"? This cannot be undone."
                                     )
                                 },
                                 confirmButton = {
                                     TextButton(
                                         onClick = {
-                                            scope.launch {
-                                                clipboard.setClipEntry(
-                                                    ClipEntry(ClipData.newPlainText("cwd", cwd))
-                                                )
+                                            onDeleteThreadsInCwd(cwd)
+                                            if (
+                                                renamingThreadId != null &&
+                                                    grouped[cwd].orEmpty().any { it.id == renamingThreadId }
+                                            ) {
+                                                renamingThreadId = null
+                                                renameDraft = ""
                                             }
-                                            showCwdDialog = null
+                                            threadMenuTargetId = null
+                                            deleteCwdTarget = null
                                         }
-                                    ) { Text("Copy path") }
+                                    ) { Text("Delete") }
                                 },
                                 dismissButton = {
-                                    TextButton(onClick = { showCwdDialog = null }) { Text("Close") }
+                                    TextButton(onClick = { deleteCwdTarget = null }) { Text("Cancel") }
                                 }
                             )
                         }
+
                     }
                 }
             }
@@ -256,6 +468,7 @@ fun CodexDroidDrawerContent(
                 onEditClick = onEditClick,
                 onDeleteClick = onDeleteClick,
                 onSetupClick = onSetupClick,
+                onSettingsClick = onSettingsClick,
                 connectionStatus = connectionStatus,
                 isSyncing = isSyncing,
                 modifier = Modifier.padding(16.dp)
@@ -271,6 +484,7 @@ fun ConnectionSelector(
     onEditClick: (String) -> Unit,
     onDeleteClick: (String) -> Unit,
     onSetupClick: () -> Unit,
+    onSettingsClick: () -> Unit,
     connectionStatus: ConnectionStatus,
     isSyncing: Boolean,
     modifier: Modifier = Modifier
@@ -283,7 +497,7 @@ fun ConnectionSelector(
         Text(
             text = "Active Connection",
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.secondary
+            color = CodexTheme.colors.textSecondary
         )
         
         Box {
@@ -318,7 +532,7 @@ fun ConnectionSelector(
                     Text(
                         text = activeConnection?.baseUrl ?: "Configure a server",
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = CodexTheme.colors.textSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -329,14 +543,14 @@ fun ConnectionSelector(
                         Surface(
                             modifier = Modifier.size(32.dp),
                             shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceVariant
+                            color = CodexTheme.colors.bgSecondary
                         ) {
                             IconButton(onClick = { onEditClick(activeConnection.id) }) {
                                 Icon(
                                     Icons.Default.Edit,
                                     contentDescription = "Edit Connection",
                                     modifier = Modifier.size(16.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    tint = CodexTheme.colors.textSecondary
                                 )
                             }
                         }
@@ -368,7 +582,7 @@ fun ConnectionSelector(
                                 Text(
                                     connection.baseUrl,
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = CodexTheme.colors.textSecondary
                                 )
                             }
                         },
@@ -382,7 +596,7 @@ fun ConnectionSelector(
                                 Icon(
                                     Icons.Default.Delete,
                                     contentDescription = "Delete connection",
-                                    tint = MaterialTheme.colorScheme.error
+                                    tint = CodexTheme.colors.accentError
                                 )
                             }
                         },
@@ -400,6 +614,33 @@ fun ConnectionSelector(
                         onSetupClick()
                         expanded = false
                     }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = CodexTheme.colors.bgSecondary,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onSettingsClick)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = null,
+                    tint = CodexTheme.colors.textSecondary
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text = "Settings",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = CodexTheme.colors.textPrimary
                 )
             }
         }
@@ -431,12 +672,13 @@ fun ConnectionSelector(
 
 @Composable
 private fun ConnectionDot(status: ConnectionStatus) {
+    val colors = CodexTheme.colors
     val color =
         when (status) {
-            ConnectionStatus.Healthy -> Color(0xFF2E7D32)
-            ConnectionStatus.Unhealthy -> Color(0xFFC62828)
-            ConnectionStatus.Checking -> MaterialTheme.colorScheme.outline
-            ConnectionStatus.Unknown -> MaterialTheme.colorScheme.outline
+            ConnectionStatus.Healthy -> colors.accentSuccess
+            ConnectionStatus.Unhealthy -> colors.accentError
+            ConnectionStatus.Checking -> colors.borderDefault
+            ConnectionStatus.Unknown -> colors.borderDefault
         }
     Box(
         modifier = Modifier
@@ -454,7 +696,7 @@ private fun HistorySkeleton() {
                     .fillMaxWidth()
                     .height(24.dp),
                 shape = MaterialTheme.shapes.small,
-                color = MaterialTheme.colorScheme.surfaceVariant
+                color = CodexTheme.colors.bgSecondary
             ) {}
             Spacer(Modifier.height(12.dp))
         }
@@ -472,6 +714,20 @@ private fun workspaceFolderName(cwd: String): String {
     return if (idx == -1) normalized else normalized.substring(idx + 1)
 }
 
+private fun threadDisplayName(thread: Thread): String {
+    return thread.clientName?.takeIf { it.isNotBlank() }
+        ?: thread.preview.takeIf { it.isNotBlank() }
+        ?: "Untitled Thread"
+}
+
+private const val ThreadLabelMaxChars = 24
+
+private fun threadDisplayLabel(thread: Thread): String {
+    val value = threadDisplayName(thread).trim()
+    if (value.length <= ThreadLabelMaxChars) return value
+    return value.take(ThreadLabelMaxChars - 1).trimEnd() + "…"
+}
+
 @Composable
 private fun DrawerSearchField(
     value: String,
@@ -479,31 +735,38 @@ private fun DrawerSearchField(
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(24.dp)
-    val interactionSource = remember { MutableInteractionSource() }
-    val focused by interactionSource.collectIsFocusedAsState()
-    val borderColor =
-        if (focused) MaterialTheme.colorScheme.primary
-        else MaterialTheme.colorScheme.outline.copy(alpha = 0.0f)
+    val colors = CodexTheme.colors
 
     TextField(
         value = value,
         onValueChange = onValueChange,
         singleLine = true,
-        interactionSource = interactionSource,
         placeholder = { Text("Search threads or folders") },
-        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+        leadingIcon = {
+            Icon(
+                Icons.Default.Search,
+                contentDescription = null,
+                tint = colors.textSecondary
+            )
+        },
         modifier =
             modifier
                 .clip(shape)
-                .border(width = 1.dp, color = borderColor, shape = shape),
+                .border(width = 1.dp, color = colors.inputFieldBorder, shape = shape),
         colors =
             TextFieldDefaults.colors(
-                focusedContainerColor = MaterialTheme.colorScheme.surface,
-                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                disabledContainerColor = MaterialTheme.colorScheme.surface,
+                focusedContainerColor = colors.inputFieldBackground,
+                unfocusedContainerColor = colors.inputFieldBackground,
+                disabledContainerColor = colors.inputFieldBackground,
                 focusedIndicatorColor = Color.Transparent,
                 unfocusedIndicatorColor = Color.Transparent,
                 disabledIndicatorColor = Color.Transparent,
+                focusedTextColor = colors.textPrimary,
+                unfocusedTextColor = colors.textPrimary,
+                disabledTextColor = colors.textPrimary,
+                focusedPlaceholderColor = colors.textSecondary,
+                unfocusedPlaceholderColor = colors.textSecondary,
+                disabledPlaceholderColor = colors.textSecondary,
             )
     )
 }

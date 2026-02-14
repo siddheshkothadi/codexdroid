@@ -12,7 +12,9 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import me.siddheshkothadi.codexdroid.domain.model.Connection
 import me.siddheshkothadi.codexdroid.domain.usecase.AddConnectionUseCase
+import me.siddheshkothadi.codexdroid.domain.usecase.GetSarvamApiKeyUseCase
 import me.siddheshkothadi.codexdroid.domain.usecase.GetConnectionsUseCase
+import me.siddheshkothadi.codexdroid.domain.usecase.UpdateSarvamApiKeyUseCase
 import me.siddheshkothadi.codexdroid.domain.usecase.UpdateConnectionUseCase
 import javax.inject.Inject
 
@@ -21,6 +23,8 @@ class SetupViewModel @Inject constructor(
     private val getConnectionsUseCase: GetConnectionsUseCase,
     private val addConnectionUseCase: AddConnectionUseCase,
     private val updateConnectionUseCase: UpdateConnectionUseCase,
+    private val updateSarvamApiKeyUseCase: UpdateSarvamApiKeyUseCase,
+    private val getSarvamApiKeyUseCase: GetSarvamApiKeyUseCase,
     private val savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -35,8 +39,16 @@ class SetupViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow<SetupUiState>(SetupUiState.Idle)
     val uiState: StateFlow<SetupUiState> = _uiState
+    private val _sarvamApiKey = MutableStateFlow("")
+    val sarvamApiKey: StateFlow<String> = _sarvamApiKey
 
-    fun saveConnection(name: String, url: String, secret: String) {
+    init {
+        viewModelScope.launch {
+            _sarvamApiKey.value = getSarvamApiKeyUseCase().orEmpty()
+        }
+    }
+
+    fun saveConnection(name: String, url: String, secret: String, sarvamApiKey: String) {
         viewModelScope.launch {
             _uiState.value = SetupUiState.Loading
             try {
@@ -45,6 +57,7 @@ class SetupViewModel @Inject constructor(
                 } else {
                     addConnectionUseCase(name, url, secret)
                 }
+                updateSarvamApiKeyUseCase(sarvamApiKey)
                 _uiState.value = SetupUiState.Success
             } catch (e: Exception) {
                 _uiState.value = SetupUiState.Error(e.message ?: "Unknown error")

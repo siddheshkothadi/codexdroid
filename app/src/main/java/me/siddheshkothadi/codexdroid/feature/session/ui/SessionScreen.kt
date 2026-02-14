@@ -13,7 +13,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -38,6 +37,7 @@ import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathParser
@@ -52,6 +52,7 @@ import kotlinx.coroutines.launch
 import me.siddheshkothadi.codexdroid.codex.*
 import me.siddheshkothadi.codexdroid.feature.shared.ui.components.CodexDroidDrawerContent
 import me.siddheshkothadi.codexdroid.feature.history.ui.HistoryUiState
+import me.siddheshkothadi.codexdroid.ui.theme.CodexTheme
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -67,6 +68,7 @@ fun SessionScreen(
     onAddConnectionClick: () -> Unit = {},
     onEditConnectionClick: (String) -> Unit = {},
     onNoConnections: () -> Unit = {},
+    onSettingsClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -84,10 +86,20 @@ fun SessionScreen(
     
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    val turnSpeechController = rememberTurnTextToSpeechController()
+    val turnSpeechController =
+        rememberTurnTextToSpeechController(
+            synthesizeSarvam = { text -> viewModel.synthesizeTurnSpeechOrNull(text) }
+        )
+    val snackbarHostState = remember { SnackbarHostState() }
     var inputText by remember { mutableStateOf("") }
     var showNewSessionDialog by remember { mutableStateOf(false) }
     var newSessionCwd by rememberSaveable { mutableStateOf("") }
+
+    LaunchedEffect(uiState.ttsNotice) {
+        val notice = uiState.ttsNotice ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(notice)
+        viewModel.onTtsNoticeShown()
+    }
 
     val cwdPresets =
         remember(uiState.historyThreads) {
@@ -128,8 +140,25 @@ fun SessionScreen(
                     viewModel.deleteConnection(connectionId)
                     scope.launch { drawerState.close() }
                 },
+                onThreadRename = { thread, newName ->
+                    viewModel.renameThread(thread.id, newName)
+                },
+                onThreadDelete = { thread ->
+                    viewModel.archiveThread(thread)
+                },
+                onStartThreadInCwd = { cwd ->
+                    viewModel.startNewSession(cwd = cwd)
+                    scope.launch { drawerState.close() }
+                },
+                onDeleteThreadsInCwd = { cwd ->
+                    viewModel.archiveThreadsInDirectory(cwd)
+                },
                 onSetupClick = {
                     onAddConnectionClick()
+                    scope.launch { drawerState.close() }
+                },
+                onSettingsClick = {
+                    onSettingsClick()
                     scope.launch { drawerState.close() }
                 },
                 connectionStatus = uiState.connectionStatus,
@@ -137,7 +166,7 @@ fun SessionScreen(
             )
         }
     ) {
-        val borderColor = MaterialTheme.colorScheme.outline
+        val borderColor = CodexTheme.colors.borderDefault
         val workspaceTitle = remember(uiState.currentThread?.cwd) {
             workspaceFolderName(uiState.currentThread?.cwd)
         }
@@ -192,9 +221,12 @@ fun SessionScreen(
                     ,
                     canSend = canSend
                 )
+            },
+            snackbarHost = {
+                SnackbarHost(hostState = snackbarHostState)
             }
         ) { padding ->
-            Box(modifier = Modifier.padding(padding).fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            Box(modifier = Modifier.padding(padding).fillMaxSize().background(CodexTheme.colors.bgPrimary)) {
                 when {
                     uiState.error != null -> ErrorView(uiState.error!!) { viewModel.sendMessage(inputText) }
                     uiState.currentThread != null && uiState.currentThread!!.turns.isEmpty() && uiState.isThreadSyncing -> SessionSkeleton()
@@ -234,7 +266,7 @@ fun SessionScreen(
                         Text(
                             text = "Recent",
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = CodexTheme.colors.textSecondary
                         )
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(cwdPresets) { cwd ->
@@ -282,7 +314,7 @@ fun SessionScreen(
                     val rendered = remember(approval.params) { renderJsonForUi(approval.params) }
                     if (rendered.isNotBlank()) {
                         Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            color = CodexTheme.colors.bgSecondary,
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -342,7 +374,7 @@ fun SessionScreen(
                                             Text(
                                                 opt.description,
                                                 style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                color = CodexTheme.colors.textSecondary
                                             )
                                         }
                                     }
@@ -389,7 +421,7 @@ fun SessionScreen(
                     val rendered = remember(req.params) { renderJsonForUi(req.params) }
                     if (rendered.isNotBlank()) {
                         Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            color = CodexTheme.colors.bgSecondary,
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -429,6 +461,11 @@ private fun SessionTopBar(
     showNewSessionButton: Boolean,
     borderColor: Color
 ) {
+    val colors = CodexTheme.colors
+    val isDark = isSystemInDarkTheme()
+    val appBarButtonBackground = if (isDark) colors.bgSecondary else colors.inputButtonBackground
+    val appBarButtonIcon = if (isDark) colors.textSecondary else colors.inputButtonContent
+
     CenterAlignedTopAppBar(
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -445,10 +482,14 @@ private fun SessionTopBar(
             Surface(
                 modifier = Modifier.padding(start = 8.dp).size(40.dp),
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceVariant
+                color = appBarButtonBackground
             ) {
                 IconButton(onClick = onMenuClick) {
-                    Icon(Icons.Default.Menu, contentDescription = "Open menu")
+                    Icon(
+                        imageVector = Icons.Default.Menu,
+                        contentDescription = "Open menu",
+                        tint = appBarButtonIcon
+                    )
                 }
             }
         },
@@ -457,23 +498,23 @@ private fun SessionTopBar(
                 Surface(
                     modifier = Modifier.padding(end = 8.dp).size(40.dp),
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surfaceVariant
+                    color = appBarButtonBackground
                 ) {
                     IconButton(onClick = onNewSessionClick) {
                         Icon(
                             Icons.Default.Add,
                             contentDescription = "New Session",
                             modifier = Modifier.size(24.dp), // Slightly larger for the plus icon
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            tint = appBarButtonIcon
                         )
                     }
                 }
             }
         },
         colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-            containerColor = MaterialTheme.colorScheme.background,
-            titleContentColor = MaterialTheme.colorScheme.onBackground,
-            navigationIconContentColor = MaterialTheme.colorScheme.onBackground
+            containerColor = colors.bgPrimary,
+            titleContentColor = colors.textPrimary,
+            navigationIconContentColor = colors.textPrimary
         )
     )
 }
@@ -509,11 +550,11 @@ private fun ControlsBottomSheet(
     var tabIndex by rememberSaveable { mutableIntStateOf(0) }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = CodexTheme.colors.bgPrimary,
         tonalElevation = 0.dp,
     ) {
         Column(Modifier.fillMaxWidth()) {
-            Surface(color = MaterialTheme.colorScheme.surface) {
+            Surface(color = CodexTheme.colors.bgPrimary) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Session controls", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
@@ -531,17 +572,30 @@ private fun ControlsBottomSheet(
                         Text(
                             text = uiState.controlsError!!,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error
+                            color = CodexTheme.colors.accentError
                         )
                     }
 
                     Spacer(Modifier.height(12.dp))
                     TabRow(
                         selectedTabIndex = tabIndex,
-                        containerColor = MaterialTheme.colorScheme.surface
+                        containerColor = CodexTheme.colors.bgPrimary,
+                        contentColor = CodexTheme.colors.accentUi
                     ) {
-                        Tab(selected = tabIndex == 0, onClick = { tabIndex = 0 }, text = { Text("Model") })
-                        Tab(selected = tabIndex == 1, onClick = { tabIndex = 1 }, text = { Text("Skills") })
+                        Tab(
+                            selected = tabIndex == 0,
+                            onClick = { tabIndex = 0 },
+                            selectedContentColor = CodexTheme.colors.accentUi,
+                            unselectedContentColor = CodexTheme.colors.textSecondary,
+                            text = { Text("Model") },
+                        )
+                        Tab(
+                            selected = tabIndex == 1,
+                            onClick = { tabIndex = 1 },
+                            selectedContentColor = CodexTheme.colors.accentUi,
+                            unselectedContentColor = CodexTheme.colors.textSecondary,
+                            text = { Text("Skills") },
+                        )
                     }
                     Spacer(Modifier.height(12.dp))
                 }
@@ -601,7 +655,7 @@ private fun ControlsBottomSheet(
                         Text(
                             text = if (uiState.isControlsSyncing) "Loading…" else "No skills found.",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = CodexTheme.colors.textSecondary,
                             modifier = Modifier.padding(vertical = 16.dp)
                         )
                     } else {
@@ -622,7 +676,7 @@ private fun ControlsBottomSheet(
                                             Text(
                                                 skill.description!!,
                                                 style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                color = CodexTheme.colors.textSecondary
                                             )
                                         }
                                         if (skill.path.isNotBlank()) {
@@ -630,7 +684,7 @@ private fun ControlsBottomSheet(
                                             Text(
                                                 skill.path,
                                                 style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                color = CodexTheme.colors.textSecondary,
                                                 maxLines = 2,
                                                 overflow = TextOverflow.Ellipsis
                                             )
@@ -686,7 +740,7 @@ private fun ModelDropdown(
                                 Text(
                                     model.description,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = CodexTheme.colors.textSecondary,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -745,12 +799,13 @@ private fun EffortDropdown(
 
 @Composable
 private fun ConnectionDot(status: ConnectionStatus) {
+    val colors = CodexTheme.colors
     val color =
         when (status) {
-            ConnectionStatus.Healthy -> Color(0xFF2E7D32)
-            ConnectionStatus.Unhealthy -> Color(0xFFC62828)
-            ConnectionStatus.Checking -> MaterialTheme.colorScheme.outline
-            ConnectionStatus.Unknown -> MaterialTheme.colorScheme.outline
+            ConnectionStatus.Healthy -> colors.accentSuccess
+            ConnectionStatus.Unhealthy -> colors.accentError
+            ConnectionStatus.Checking -> colors.borderDefault
+            ConnectionStatus.Unknown -> colors.borderDefault
         }
     Box(
         modifier = Modifier
@@ -768,7 +823,7 @@ private fun SessionSkeleton() {
                     .fillMaxWidth(if (it % 2 == 0) 0.8f else 0.6f)
                     .height(20.dp),
                 shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant
+                color = CodexTheme.colors.bgSecondary
             ) {}
             Spacer(Modifier.height(12.dp))
         }
@@ -867,8 +922,8 @@ private fun MessageList(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(16.dp),
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                containerColor = CodexTheme.colors.bgSecondary,
+                contentColor = CodexTheme.colors.textPrimary
             ) {
                 Icon(Icons.Default.ArrowDownward, contentDescription = "Scroll to bottom")
             }
@@ -991,9 +1046,8 @@ private fun normalizeReasoningHeader(raw: String): String {
 
 @Composable
 private fun ReasoningLiveHeader(text: String) {
-    val surfaceTint = MaterialTheme.colorScheme.surfaceVariant
-    val glowColor = MaterialTheme.colorScheme.surface
-    val textColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val glowColor = CodexTheme.colors.bgPrimary
+    val textColor = CodexTheme.colors.textSecondary
 
     val transition = rememberInfiniteTransition(label = "reasoning_live_glow")
     val sweep by transition.animateFloat(
@@ -1001,7 +1055,7 @@ private fun ReasoningLiveHeader(text: String) {
         targetValue = 1.35f,
         animationSpec =
             infiniteRepeatable(
-                animation = tween(durationMillis = 1800, easing = FastOutSlowInEasing),
+                animation = tween(durationMillis = 2600, easing = FastOutSlowInEasing),
                 repeatMode = RepeatMode.Restart,
             ),
         label = "reasoning_live_sweep",
@@ -1011,7 +1065,7 @@ private fun ReasoningLiveHeader(text: String) {
         targetValue = 1f,
         animationSpec =
             infiniteRepeatable(
-                animation = tween(durationMillis = 1100, easing = FastOutSlowInEasing),
+                animation = tween(durationMillis = 1600, easing = FastOutSlowInEasing),
                 repeatMode = RepeatMode.Reverse,
             ),
         label = "reasoning_live_pulse",
@@ -1021,42 +1075,36 @@ private fun ReasoningLiveHeader(text: String) {
         modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp).offset(y = (-6).dp),
         horizontalAlignment = Alignment.Start,
     ) {
-        Surface(
-            shape = RoundedCornerShape(14.dp),
-            color = surfaceTint.copy(alpha = 0.36f),
-            tonalElevation = 0.dp,
-        ) {
-            Text(
-                text = text,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyLarge,
-                color = textColor,
-                modifier =
-                    Modifier
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                        .drawWithContent {
-                            drawContent()
-                            val centerX = size.width * sweep
-                            val spread = max(size.width * 0.24f, 42.dp.toPx())
-                            drawRect(
-                                brush =
-                                    Brush.horizontalGradient(
-                                        colors =
-                                            listOf(
-                                                Color.Transparent,
-                                                glowColor.copy(alpha = 0.10f * pulse),
-                                                glowColor.copy(alpha = 0.55f * pulse),
-                                                glowColor.copy(alpha = 0.12f * pulse),
-                                                Color.Transparent,
-                                            ),
-                                        startX = centerX - spread,
-                                        endX = centerX + spread,
-                                    )
-                            )
-                        },
-            )
-        }
+        Text(
+            text = text,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = textColor,
+            modifier =
+                Modifier
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .drawWithContent {
+                        drawContent()
+                        val centerX = size.width * sweep
+                        val spread = max(size.width * 0.30f, 56.dp.toPx())
+                        drawRect(
+                            brush =
+                                Brush.horizontalGradient(
+                                    colors =
+                                        listOf(
+                                            Color.Transparent,
+                                            glowColor.copy(alpha = 0.18f * pulse),
+                                            glowColor.copy(alpha = 0.70f * pulse),
+                                            glowColor.copy(alpha = 0.22f * pulse),
+                                            Color.Transparent,
+                                        ),
+                                    startX = centerX - spread,
+                                    endX = centerX + spread,
+                                )
+                        )
+                    },
+        )
     }
 }
 
@@ -1092,13 +1140,15 @@ private fun TurnSpeechControlRow(
     val isActiveTurn = turnSpeechController.activeTurnId == entry.turnId
     val state =
         if (isActiveTurn) turnSpeechController.playbackState else TurnSpeechPlaybackState.Idle
+    val isSynthesizing = state == TurnSpeechPlaybackState.Synthesizing
     val (ttsIcon, ttsLabel, onTtsClick) =
         when (state) {
             TurnSpeechPlaybackState.Speaking ->
                 Triple(Icons.Default.Pause, "Pause", { turnSpeechController.pause() })
             TurnSpeechPlaybackState.Paused ->
                 Triple(Icons.Default.PlayArrow, "Resume", { turnSpeechController.resume() })
-            TurnSpeechPlaybackState.Idle ->
+            TurnSpeechPlaybackState.Idle,
+            TurnSpeechPlaybackState.Synthesizing ->
                 Triple(
                     Icons.AutoMirrored.Filled.VolumeUp,
                     "Listen",
@@ -1125,12 +1175,29 @@ private fun TurnSpeechControlRow(
                     modifier = Modifier.size(18.dp),
                 )
             }
-            IconButton(onClick = onTtsClick, modifier = Modifier.size(34.dp)) {
-                Icon(
-                    imageVector = ttsIcon,
-                    contentDescription = ttsLabel,
+            if (isSynthesizing) {
+                CircularProgressIndicator(
                     modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp
                 )
+                IconButton(
+                    onClick = { turnSpeechController.cancelSynthesis() },
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Stop,
+                        contentDescription = "Stop speech request",
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            } else {
+                IconButton(onClick = onTtsClick, modifier = Modifier.size(34.dp)) {
+                    Icon(
+                        imageVector = ttsIcon,
+                        contentDescription = ttsLabel,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
             }
         }
     }
@@ -1184,10 +1251,10 @@ private fun AgentTypingIndicator() {
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .background(CodexTheme.colors.bgSecondary)
                 .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
-            TypingDots(color = MaterialTheme.colorScheme.onSurfaceVariant)
+            TypingDots(color = CodexTheme.colors.textSecondary)
         }
     }
 }
@@ -1244,7 +1311,7 @@ private fun EmptyView() {
         Icon(
             imageVector = CodexLogo,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onBackground.copy(alpha = if (isSystemInDarkTheme()) 0.10f else 0.06f),
+            tint = CodexTheme.colors.textPrimary.copy(alpha = if (isSystemInDarkTheme()) 0.10f else 0.06f),
             modifier = Modifier.size(180.dp),
         )
     }
@@ -1273,7 +1340,7 @@ private val CodexLogo: ImageVector by lazy {
 private fun ErrorView(message: String, onRetry: () -> Unit) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Error: $message", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
+            Text("Error: $message", color = CodexTheme.colors.accentError, modifier = Modifier.padding(16.dp))
             Button(onClick = onRetry) { Text("Retry") }
         }
     }
@@ -1290,8 +1357,12 @@ fun ChatInput(
     isSending: Boolean,
     canSend: Boolean,
 ) {
+    val colors = CodexTheme.colors
+    val isDark = isSystemInDarkTheme()
+    val toolsButtonBackground = if (isDark) colors.bgSecondary else colors.inputButtonBackground
+    val toolsButtonIcon = if (isDark) colors.textSecondary else colors.inputButtonContent
     Surface(
-        color = MaterialTheme.colorScheme.background
+        color = colors.bgPrimary
     ) {
         Row(
             modifier =
@@ -1305,13 +1376,13 @@ fun ChatInput(
             Surface(
                 modifier = Modifier.size(56.dp),
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceVariant
+                color = toolsButtonBackground
             ) {
                 IconButton(onClick = onControls, enabled = enabled) {
                     Icon(
                         Icons.Default.Tune,
                         contentDescription = "Session controls",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = toolsButtonIcon
                     )
                 }
             }
@@ -1324,8 +1395,9 @@ fun ChatInput(
                     Modifier
                         .weight(1f)
                         .heightIn(min = 56.dp)
-                        .clip(RoundedCornerShape(24.dp)),
-                placeholder = { Text("Ask something...", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        .clip(RoundedCornerShape(24.dp))
+                        .border(width = 1.dp, color = colors.inputFieldBorder, shape = RoundedCornerShape(24.dp)),
+                placeholder = { Text("Ask something", color = colors.textSecondary) },
                 maxLines = 5,
                 enabled = enabled,
                 trailingIcon = {
@@ -1333,8 +1405,8 @@ fun ChatInput(
                         FilledIconButton(
                             onClick = onStop,
                             colors = IconButtonDefaults.filledIconButtonColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                containerColor = toolsButtonBackground,
+                                contentColor = toolsButtonIcon
                             ),
                             modifier = Modifier.padding(end = 4.dp)
                         ) {
@@ -1344,37 +1416,36 @@ fun ChatInput(
                             )
                         }
                     } else {
-                        val isEnabled = enabled && canSend && text.trim().isNotEmpty()
-                        FilledIconButton(
-                            onClick = onSend,
-                            enabled = isEnabled,
-                            colors = IconButtonDefaults.filledIconButtonColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
-                                disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                            ),
-                            modifier = Modifier.padding(end = 4.dp)
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.Send,
-                                contentDescription = "Send"
-                            )
+                        val canShowSend = enabled && canSend && text.trim().isNotEmpty()
+                        if (canShowSend) {
+                            FilledIconButton(
+                                onClick = onSend,
+                                colors = IconButtonDefaults.filledIconButtonColors(
+                                    containerColor = colors.accentAction,
+                                    contentColor = colors.onAccentAction
+                                ),
+                                modifier = Modifier.padding(end = 4.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.ArrowUpward,
+                                    contentDescription = "Send"
+                                )
+                            }
                         }
                     }
                 },
                 colors = TextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surface,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                    disabledContainerColor = MaterialTheme.colorScheme.surface,
+                    focusedContainerColor = colors.inputFieldBackground,
+                    unfocusedContainerColor = colors.inputFieldBackground,
+                    disabledContainerColor = colors.inputFieldBackground,
                     focusedIndicatorColor = Color.Transparent,
                     disabledIndicatorColor = Color.Transparent,
                     unfocusedIndicatorColor = Color.Transparent,
-                    cursorColor = MaterialTheme.colorScheme.primary,
-                    focusedTextColor = MaterialTheme.colorScheme.onBackground,
-                    unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
-                    disabledTextColor = MaterialTheme.colorScheme.onBackground,
-                    disabledPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    cursorColor = colors.accentAction,
+                    focusedTextColor = colors.textPrimary,
+                    unfocusedTextColor = colors.textPrimary,
+                    disabledTextColor = colors.textPrimary,
+                    disabledPlaceholderColor = colors.textSecondary,
                 )
             )
         }

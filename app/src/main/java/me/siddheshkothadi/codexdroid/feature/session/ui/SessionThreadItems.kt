@@ -1,6 +1,7 @@
 package me.siddheshkothadi.codexdroid.feature.session.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -15,10 +16,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.halilibo.richtext.commonmark.CommonMarkdownParseOptions
 import com.halilibo.richtext.commonmark.Markdown
+import com.halilibo.richtext.ui.BlockQuoteGutter
+import com.halilibo.richtext.ui.CodeBlockStyle
+import com.halilibo.richtext.ui.ListStyle
 import com.halilibo.richtext.ui.material3.RichText
+import com.halilibo.richtext.ui.RichTextStyle
+import com.halilibo.richtext.ui.TableStyle
+import com.halilibo.richtext.ui.string.RichTextStringStyle
 import me.siddheshkothadi.codexdroid.codex.*
 import me.siddheshkothadi.codexdroid.ui.theme.CodexTheme
 @Composable
@@ -68,9 +82,10 @@ fun ThreadItemBubble(item: ThreadItem) {
                 }
                 is ThreadItem.AgentMessage -> {
                     SelectionContainer {
-                        RichText(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
-                            Markdown(item.text)
-                        }
+                        CodexMarkdown(
+                            markdown = item.text,
+                            modifier = Modifier.fillMaxWidth().padding(14.dp)
+                        )
                     }
                 }
                 is ThreadItem.Reasoning -> ReasoningItem(item)
@@ -120,16 +135,12 @@ fun ReasoningItem(item: ThreadItem.Reasoning) {
             Column(modifier = Modifier.padding(12.dp)) {
                 item.summary.forEach {
                     ProvideTextStyle(MaterialTheme.typography.bodySmall) {
-                        RichText(modifier = Modifier.fillMaxWidth()) {
-                            Markdown(it)
-                        }
+                        CodexMarkdown(markdown = it, modifier = Modifier.fillMaxWidth())
                     }
                 }
                 item.content.forEach {
                     ProvideTextStyle(MaterialTheme.typography.bodySmall) {
-                        RichText(modifier = Modifier.fillMaxWidth()) {
-                            Markdown(it)
-                        }
+                        CodexMarkdown(markdown = it, modifier = Modifier.fillMaxWidth())
                     }
                 }
             }
@@ -290,9 +301,7 @@ fun PlanUpdateItem(item: ThreadItem.PlanUpdate) {
             Column(modifier = Modifier.padding(12.dp)) {
                 if (markdown.isNotBlank()) {
                     ProvideTextStyle(MaterialTheme.typography.bodySmall) {
-                        RichText(modifier = Modifier.fillMaxWidth()) {
-                            Markdown(markdown)
-                        }
+                        CodexMarkdown(markdown = markdown, modifier = Modifier.fillMaxWidth())
                     }
                 }
             }
@@ -476,9 +485,7 @@ private fun InfoItem(id: String, title: String, body: String) {
             Column(modifier = Modifier.padding(12.dp)) {
                 if (body.isNotBlank()) {
                     ProvideTextStyle(MaterialTheme.typography.bodySmall) {
-                        RichText(modifier = Modifier.fillMaxWidth()) {
-                            Markdown(body)
-                        }
+                        CodexMarkdown(markdown = body, modifier = Modifier.fillMaxWidth())
                     }
                 }
             }
@@ -486,4 +493,82 @@ private fun InfoItem(id: String, title: String, body: String) {
     }
 }
 
+@Composable
+private fun CodexMarkdown(markdown: String, modifier: Modifier = Modifier) {
+    RichText(
+        modifier = modifier,
+        style = rememberCodexMarkdownStyle(),
+    ) {
+        Markdown(
+            content = markdown,
+            markdownParseOptions = CommonMarkdownParseOptions.Default.copy(autolink = true),
+        )
+    }
+}
+
+@Composable
+private fun rememberCodexMarkdownStyle(): RichTextStyle {
+    val colors = CodexTheme.colors
+    val typography = MaterialTheme.typography
+    return remember(colors, typography) {
+        RichTextStyle(
+            paragraphSpacing = 6.sp,
+            headingStyle = { level, _ ->
+                when (level) {
+                    1 -> typography.titleLarge.copy(fontWeight = FontWeight.SemiBold, color = colors.textPrimary)
+                    2 -> typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, color = colors.textPrimary)
+                    3 -> typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, color = colors.textPrimary)
+                    else -> typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold, color = colors.textPrimary)
+                }
+            },
+            listStyle = ListStyle(itemSpacing = 3.sp),
+            blockQuoteGutter =
+                BlockQuoteGutter.BarGutter(
+                    color = { colors.borderDefault },
+                    startMargin = 4.sp,
+                    barWidth = 3.sp,
+                    endMargin = 8.sp,
+                ),
+            codeBlockStyle =
+                CodeBlockStyle(
+                    textStyle = typography.bodySmall.copy(fontFamily = FontFamily.Monospace, color = colors.textPrimary),
+                    modifier =
+                        Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(1.dp, colors.borderDefault, RoundedCornerShape(8.dp)),
+                    padding = 12.sp,
+                    wordWrap = false,
+                ),
+            tableStyle =
+                TableStyle(
+                    headerTextStyle = typography.bodySmall.copy(fontWeight = FontWeight.SemiBold, color = colors.textPrimary),
+                    cellPadding = 8.sp,
+                    borderColor = colors.borderDefault,
+                    borderStrokeWidth = 1f,
+                ),
+            stringStyle =
+                RichTextStringStyle(
+                    codeStyle =
+                        SpanStyle(
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Medium,
+                            background = Color.Transparent,
+                        ),
+                    linkStyle =
+                        TextLinkStyles(
+                            style =
+                                SpanStyle(
+                                    color = colors.accentPrimary,
+                                    textDecoration = TextDecoration.Underline,
+                                ),
+                            pressedStyle =
+                                SpanStyle(
+                                    color = colors.accentPrimary.copy(alpha = 0.75f),
+                                    textDecoration = TextDecoration.Underline,
+                                ),
+                        ),
+                ),
+        )
+    }
+}
 

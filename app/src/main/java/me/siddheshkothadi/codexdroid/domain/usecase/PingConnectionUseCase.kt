@@ -1,17 +1,15 @@
 package me.siddheshkothadi.codexdroid.domain.usecase
 
 import me.siddheshkothadi.codexdroid.domain.model.Connection
-import me.siddheshkothadi.codexdroid.codex.CodexApiService
+import me.siddheshkothadi.codexdroid.domain.repository.CodexSessionRepository
 import javax.inject.Inject
 
 class PingConnectionUseCase @Inject constructor(
-    private val apiService: CodexApiService,
+    private val codexSessionRepository: CodexSessionRepository,
 ) {
     suspend operator fun invoke(connection: Connection): Boolean {
-        return try {
-            apiService.ping(connection.baseUrl, connection.secret)
-        } catch (_: Exception) {
-            false
-        }
+        return codexSessionRepository.ping(connection)
     }
 }
+
+

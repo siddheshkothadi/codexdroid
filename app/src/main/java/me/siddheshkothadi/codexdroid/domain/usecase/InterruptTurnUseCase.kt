@@ -1,10 +1,10 @@
 package me.siddheshkothadi.codexdroid.domain.usecase
 
-import me.siddheshkothadi.codexdroid.codex.CodexApiService
+import me.siddheshkothadi.codexdroid.domain.repository.CodexSessionRepository
 import javax.inject.Inject
 
 class InterruptTurnUseCase @Inject constructor(
-    private val apiService: CodexApiService,
+    private val codexSessionRepository: CodexSessionRepository,
 ) {
     suspend operator fun invoke(
         baseUrl: String,
@@ -12,6 +12,8 @@ class InterruptTurnUseCase @Inject constructor(
         threadId: String,
         turnId: String,
     ) {
-        apiService.interruptTurn(baseUrl, secret, threadId, turnId)
+        codexSessionRepository.interruptTurn(baseUrl, secret, threadId, turnId)
     }
 }
+
+

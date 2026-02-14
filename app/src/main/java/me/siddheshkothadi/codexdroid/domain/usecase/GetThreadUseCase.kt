@@ -1,7 +1,7 @@
 package me.siddheshkothadi.codexdroid.domain.usecase
 
 import me.siddheshkothadi.codexdroid.codex.Thread
-import me.siddheshkothadi.codexdroid.data.repository.ThreadRepository
+import me.siddheshkothadi.codexdroid.domain.repository.ThreadRepository
 import javax.inject.Inject
 
 class GetThreadUseCase @Inject constructor(
@@ -11,3 +11,5 @@ class GetThreadUseCase @Inject constructor(
         return threadRepository.getThread(connectionId, threadId)
     }
 }
+
+

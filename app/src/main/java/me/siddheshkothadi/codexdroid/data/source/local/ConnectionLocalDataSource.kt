@@ -1,20 +1,20 @@
-package me.siddheshkothadi.codexdroid.data.repository
+package me.siddheshkothadi.codexdroid.data.source.local
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import me.siddheshkothadi.codexdroid.data.local.ConnectionDao
 import me.siddheshkothadi.codexdroid.data.local.ConnectionEntity
-import me.siddheshkothadi.codexdroid.domain.model.Connection
 import me.siddheshkothadi.codexdroid.data.local.CryptoManager
+import me.siddheshkothadi.codexdroid.domain.model.Connection
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class ConnectionRepository @Inject constructor(
+class ConnectionLocalDataSource @Inject constructor(
     private val connectionDao: ConnectionDao,
     private val cryptoManager: CryptoManager,
 ) {
-    fun getAllConnections(): Flow<List<Connection>> {
+    fun observeConnections(): Flow<List<Connection>> {
         return connectionDao.getAllConnections().map { entities ->
             entities.map { it.toDomain() }.sortedByDescending { it.updatedAt }
         }

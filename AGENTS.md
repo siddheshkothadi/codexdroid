@@ -14,16 +14,20 @@ This file is the agent-facing map of the repository, aligned with harness-first 
 8. Data layer (Room/repositories): `app/src/main/java/me/siddheshkothadi/codexdroid/data/`
 9. Domain layer (models/use cases): `app/src/main/java/me/siddheshkothadi/codexdroid/domain/`
 10. Dependency injection: `app/src/main/java/me/siddheshkothadi/codexdroid/di/`
+11. Domain repository contracts: `app/src/main/java/me/siddheshkothadi/codexdroid/domain/repository/`
+12. Data sources (local/remote): `app/src/main/java/me/siddheshkothadi/codexdroid/data/source/`
 
 ## Architecture rules
 
 1. Layering is strict: `UI -> Domain -> Data`.
 2. UI (`feature/*/ui/*`, `ui/navigation/*`, and `MainViewModel`) must not import `data/*` or `CodexApiService` directly.
 3. UI talks to domain via use cases.
-4. Room is source of truth for `connections` and `threads`.
-5. DataStore is only for lightweight app preference/migration state.
-6. Compose state collection should use lifecycle-aware APIs (`collectAsStateWithLifecycle`).
-7. Coroutines dispatchers are provided through DI qualifiers in `di/CoroutineModule.kt`.
+4. Domain depends on repository interfaces only (`domain/repository/*`); data implements those interfaces.
+5. Data layer uses `data/source/local` and `data/source/remote` behind repository implementations.
+6. Room is source of truth for `connections` and `threads`.
+7. DataStore is only for lightweight app preference/migration state.
+8. Compose state collection should use lifecycle-aware APIs (`collectAsStateWithLifecycle`).
+9. Coroutines dispatchers are provided through DI qualifiers in `di/CoroutineModule.kt`.
 
 ## Architecture guardrails
 

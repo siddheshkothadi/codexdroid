@@ -1,6 +1,6 @@
 package me.siddheshkothadi.codexdroid.domain.usecase
 
-import me.siddheshkothadi.codexdroid.data.repository.ConnectionRepository
+import me.siddheshkothadi.codexdroid.domain.repository.ConnectionRepository
 import javax.inject.Inject
 
 class AddConnectionUseCase @Inject constructor(
@@ -10,3 +10,5 @@ class AddConnectionUseCase @Inject constructor(
         repository.addConnection(name, url, secret)
     }
 }
+
+

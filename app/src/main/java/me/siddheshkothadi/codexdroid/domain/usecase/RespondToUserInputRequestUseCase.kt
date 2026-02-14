@@ -1,10 +1,10 @@
 package me.siddheshkothadi.codexdroid.domain.usecase
 
-import me.siddheshkothadi.codexdroid.codex.CodexApiService
+import me.siddheshkothadi.codexdroid.domain.repository.CodexSessionRepository
 import javax.inject.Inject
 
 class RespondToUserInputRequestUseCase @Inject constructor(
-    private val apiService: CodexApiService,
+    private val codexSessionRepository: CodexSessionRepository,
 ) {
     suspend operator fun invoke(
         baseUrl: String,
@@ -12,6 +12,8 @@ class RespondToUserInputRequestUseCase @Inject constructor(
         requestId: Long,
         answers: Map<String, List<String>>,
     ) {
-        apiService.respondToUserInputRequest(baseUrl, secret, requestId, answers)
+        codexSessionRepository.respondToUserInputRequest(baseUrl, secret, requestId, answers)
     }
 }
+
+

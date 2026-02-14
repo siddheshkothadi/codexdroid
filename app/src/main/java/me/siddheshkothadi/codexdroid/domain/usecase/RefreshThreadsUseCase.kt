@@ -1,7 +1,7 @@
 package me.siddheshkothadi.codexdroid.domain.usecase
 
 import me.siddheshkothadi.codexdroid.domain.model.Connection
-import me.siddheshkothadi.codexdroid.data.repository.ThreadRepository
+import me.siddheshkothadi.codexdroid.domain.repository.ThreadRepository
 import javax.inject.Inject
 
 class RefreshThreadsUseCase @Inject constructor(
@@ -11,3 +11,5 @@ class RefreshThreadsUseCase @Inject constructor(
         repository.refreshThreads(connection)
     }
 }
+
+

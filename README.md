@@ -8,8 +8,8 @@ The app follows layered architecture with explicit dependency flow:
 
 - `UI -> Domain -> Data`
 - UI (`ViewModel` + Compose screens) depends only on domain use cases and UI models.
-- Domain exposes use cases and models.
-- Data owns persistence/network implementations and repository internals.
+- Domain exposes use cases, models, and repository contracts (`domain/repository`).
+- Data owns persistence/network implementations and repository internals that implement domain contracts.
 
 ### Directory map
 
@@ -19,7 +19,9 @@ The app follows layered architecture with explicit dependency flow:
 - `app/src/main/java/me/siddheshkothadi/codexdroid/feature/shared/ui/components/`
 - `app/src/main/java/me/siddheshkothadi/codexdroid/ui/navigation/`
 - `app/src/main/java/me/siddheshkothadi/codexdroid/domain/`
+- `app/src/main/java/me/siddheshkothadi/codexdroid/domain/repository/`
 - `app/src/main/java/me/siddheshkothadi/codexdroid/data/`
+- `app/src/main/java/me/siddheshkothadi/codexdroid/data/source/`
 - `app/src/main/java/me/siddheshkothadi/codexdroid/codex/` (transport/runtime wiring)
 - `app/src/main/java/me/siddheshkothadi/codexdroid/di/`
 
@@ -28,6 +30,9 @@ The app follows layered architecture with explicit dependency flow:
 - Room is the source of truth for structured app data:
   - `connections`
   - `threads`
+- Repository implementations use explicit local/remote data sources:
+  - `data/source/local/*`
+  - `data/source/remote/*`
 - DataStore is now limited to lightweight preference/state use:
   - legacy connection import marker
   - migration bridge data (one-time import path)

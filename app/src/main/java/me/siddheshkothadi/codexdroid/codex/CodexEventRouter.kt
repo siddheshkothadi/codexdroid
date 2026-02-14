@@ -22,7 +22,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import me.siddheshkothadi.codexdroid.MainActivity
 import me.siddheshkothadi.codexdroid.domain.model.Connection
-import me.siddheshkothadi.codexdroid.data.repository.ThreadRepository
+import me.siddheshkothadi.codexdroid.domain.repository.ThreadRepository
 import me.siddheshkothadi.codexdroid.di.IoDispatcher
 import me.siddheshkothadi.codexdroid.domain.usecase.GetConnectionsUseCase
 import me.siddheshkothadi.codexdroid.navigation.CodexDroidAppLinkKeys

@@ -1,12 +1,12 @@
 package me.siddheshkothadi.codexdroid.domain.usecase
 
-import me.siddheshkothadi.codexdroid.codex.CodexApiService
+import me.siddheshkothadi.codexdroid.domain.repository.CodexSessionRepository
 import me.siddheshkothadi.codexdroid.codex.CodexResponse
 import me.siddheshkothadi.codexdroid.codex.TurnStartResult
 import javax.inject.Inject
 
 class StartTurnUseCase @Inject constructor(
-    private val apiService: CodexApiService,
+    private val codexSessionRepository: CodexSessionRepository,
 ) {
     suspend operator fun invoke(
         baseUrl: String,
@@ -17,7 +17,7 @@ class StartTurnUseCase @Inject constructor(
         model: String?,
         effort: String?,
     ): CodexResponse<TurnStartResult> {
-        return apiService.startTurn(
+        return codexSessionRepository.startTurn(
             baseUrl = baseUrl,
             secret = secret,
             threadId = threadId,
@@ -28,3 +28,5 @@ class StartTurnUseCase @Inject constructor(
         )
     }
 }
+
+

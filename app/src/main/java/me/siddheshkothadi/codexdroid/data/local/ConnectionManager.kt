@@ -22,7 +22,7 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 class ConnectionManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val cryptoManager: CryptoManager
-) {
+) : LegacyConnectionStore {
     private val connectionsKey = stringPreferencesKey("connections_list")
     private val roomMigrationCompleteKey = booleanPreferencesKey("connections_room_migration_complete")
 
@@ -37,21 +37,21 @@ class ConnectionManager @Inject constructor(
             }
         }
 
-    suspend fun readLegacyConnections(): List<Connection> = legacyConnections.first()
+    override suspend fun readLegacyConnections(): List<Connection> = legacyConnections.first()
 
     suspend fun hasLegacyConnections(): Boolean = readLegacyConnections().isNotEmpty()
 
-    suspend fun isRoomMigrationComplete(): Boolean {
+    override suspend fun isRoomMigrationComplete(): Boolean {
         return context.dataStore.data.first()[roomMigrationCompleteKey] ?: false
     }
 
-    suspend fun markRoomMigrationComplete() {
+    override suspend fun markRoomMigrationComplete() {
         context.dataStore.edit { preferences ->
             preferences[roomMigrationCompleteKey] = true
         }
     }
 
-    suspend fun clearLegacyConnections() {
+    override suspend fun clearLegacyConnections() {
         context.dataStore.edit { preferences ->
             preferences[connectionsKey] = "[]"
         }

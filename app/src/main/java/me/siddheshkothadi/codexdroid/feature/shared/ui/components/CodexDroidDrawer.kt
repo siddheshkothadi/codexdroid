@@ -567,6 +567,21 @@ fun ConnectionSelector(
                             shape = CircleShape,
                             color = CodexTheme.colors.bgSecondary
                         ) {
+                            IconButton(onClick = onSettingsClick) {
+                                Icon(
+                                    Icons.Default.Settings,
+                                    contentDescription = "Settings",
+                                    modifier = Modifier.size(16.dp),
+                                    tint = CodexTheme.colors.textSecondary
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Surface(
+                            modifier = Modifier.size(32.dp),
+                            shape = CircleShape,
+                            color = CodexTheme.colors.bgSecondary
+                        ) {
                             IconButton(onClick = { onEditClick(activeConnection.id) }) {
                                 Icon(
                                     Icons.Default.Edit,
@@ -636,33 +651,6 @@ fun ConnectionSelector(
                         onSetupClick()
                         expanded = false
                     }
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-        Surface(
-            shape = RoundedCornerShape(14.dp),
-            color = CodexTheme.colors.bgSecondary,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onSettingsClick)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = null,
-                    tint = CodexTheme.colors.textSecondary
-                )
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    text = "Settings",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = CodexTheme.colors.textPrimary
                 )
             }
         }

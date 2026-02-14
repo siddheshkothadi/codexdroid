@@ -12,10 +12,10 @@ data class SarvamTtsSettings(
         const val DEFAULT_VOICE = "Shubh"
         const val DEFAULT_TARGET_LANGUAGE_CODE = "en-IN"
         const val DEFAULT_PACE = 1.0f
-        const val DEFAULT_SPEECH_SAMPLE_RATE = 22_050
+        const val DEFAULT_SPEECH_SAMPLE_RATE = 24_000
         const val DEFAULT_TEMPERATURE = 0.6f
 
-        val SUPPORTED_SAMPLE_RATES = setOf(8_000, 16_000, 22_050)
+        val SUPPORTED_SAMPLE_RATES = setOf(8_000, 16_000, 22_050, 24_000, 32_000, 44_100, 48_000)
         val SUPPORTED_LANGUAGE_CODES = setOf(
             "en-IN",
             "hi-IN",
@@ -38,13 +38,12 @@ data class SarvamTtsSettings(
                         .trim()
                         .takeIf { it in SUPPORTED_LANGUAGE_CODES }
                         ?: DEFAULT_TARGET_LANGUAGE_CODE,
-                pace = input.pace.coerceIn(0.3f, 3.0f),
+                pace = input.pace.coerceIn(0.5f, 2.0f),
                 speechSampleRate =
                     input.speechSampleRate.takeIf { it in SUPPORTED_SAMPLE_RATES }
                         ?: DEFAULT_SPEECH_SAMPLE_RATE,
-                temperature = input.temperature.coerceIn(0.01f, 1.0f),
+                temperature = input.temperature.coerceIn(0.01f, 2.0f),
             )
         }
     }
 }
-

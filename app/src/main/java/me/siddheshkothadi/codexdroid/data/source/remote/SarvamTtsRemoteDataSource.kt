@@ -10,8 +10,8 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
-import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -50,18 +50,17 @@ class SarvamTtsRemoteDataSource @Inject constructor() {
                     SarvamTtsRequest(
                         text = text,
                         model = "bulbul:v3",
-                        speaker = settings.voice,
+                        speaker = settings.voice.trim().lowercase(),
                         targetLanguageCode = settings.targetLanguageCode,
                         pace = settings.pace,
                         speechSampleRate = settings.speechSampleRate,
                         temperature = settings.temperature,
                         outputAudioCodec = "wav",
-                        enablePreprocessing = true,
                     )
                 )
             }
 
-        if (response.status != HttpStatusCode.OK) {
+        if (!response.status.isSuccess()) {
             val errorBody = runCatching { response.bodyAsText() }.getOrNull().orEmpty()
             val suffix = errorBody.take(300).trim()
             val msg =
@@ -75,12 +74,18 @@ class SarvamTtsRemoteDataSource @Inject constructor() {
 
         val body = response.body<SarvamTtsResponse>()
         val audioBase64 =
-            body.audios.firstOrNull()
+            (
+                body.audios.firstOrNull()?.trim().takeUnless { it.isNullOrBlank() }
+                    ?: body.audio?.trim()
+            )
                 ?.trim()
                 ?.substringAfter("base64,", missingDelimiterValue = "")
                 .orEmpty()
                 .ifBlank {
-                    body.audios.firstOrNull()?.trim().orEmpty()
+                    (
+                        body.audios.firstOrNull()?.trim().takeUnless { it.isNullOrBlank() }
+                            ?: body.audio?.trim()
+                    ).orEmpty()
                 }
 
         if (audioBase64.isBlank()) {
@@ -111,11 +116,10 @@ private data class SarvamTtsRequest(
     @SerialName("speech_sample_rate") val speechSampleRate: Int,
     val temperature: Float,
     @SerialName("output_audio_codec") val outputAudioCodec: String,
-    @SerialName("enable_preprocessing") val enablePreprocessing: Boolean,
 )
 
 @Serializable
 private data class SarvamTtsResponse(
     val audios: List<String> = emptyList(),
+    val audio: String? = null,
 )
-

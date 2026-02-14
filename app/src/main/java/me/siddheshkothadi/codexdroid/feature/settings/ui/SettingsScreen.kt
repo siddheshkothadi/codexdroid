@@ -247,7 +247,7 @@ fun SettingsScreen(
                     Slider(
                         value = paceDraft,
                         onValueChange = { paceDraft = it },
-                        valueRange = 0.3f..3.0f,
+                        valueRange = 0.5f..2.0f,
                         onValueChangeFinished = { viewModel.onPaceChanged(paceDraft) },
                     )
 
@@ -258,7 +258,7 @@ fun SettingsScreen(
                     Slider(
                         value = temperatureDraft,
                         onValueChange = { temperatureDraft = it },
-                        valueRange = 0.01f..1.0f,
+                        valueRange = 0.01f..2.0f,
                         onValueChangeFinished = { viewModel.onTemperatureChanged(temperatureDraft) },
                     )
 

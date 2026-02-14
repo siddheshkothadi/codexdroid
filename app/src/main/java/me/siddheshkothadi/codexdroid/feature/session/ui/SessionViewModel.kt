@@ -416,7 +416,8 @@ class SessionViewModel @Inject constructor(
             synthesizeSarvamSpeechUseCase(text).audioBytes
         } catch (e: CancellationException) {
             throw e
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(tag, "Sarvam TTS failed, using Android fallback", e)
             maybePublishSarvamFallbackNotice()
             null
         }

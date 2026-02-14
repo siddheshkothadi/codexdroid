@@ -6,15 +6,18 @@
   "properties": {
     "suite": { "type": "string" },
     "generated_at": { "type": "string" },
+    "gate_status": { "type": "string", "enum": ["pass", "fail"] },
     "summary": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "total": { "type": "integer", "minimum": 0 },
         "passed": { "type": "integer", "minimum": 0 },
-        "failed": { "type": "integer", "minimum": 0 }
+        "failed": { "type": "integer", "minimum": 0 },
+        "pass_rate": { "type": "number", "minimum": 0, "maximum": 100 },
+        "flake_count": { "type": "integer", "minimum": 0 }
       },
-      "required": ["total", "passed", "failed"]
+      "required": ["total", "passed", "failed", "pass_rate", "flake_count"]
     },
     "results": {
       "type": "array",
@@ -23,7 +26,7 @@
         "additionalProperties": false,
         "properties": {
           "scenario_id": { "type": "string" },
-          "status": { "type": "string", "enum": ["pass", "fail"] },
+          "status": { "type": "string", "enum": ["pass", "fail", "flaky"] },
           "latency_ms": { "type": "integer", "minimum": 0 },
           "assertions": { "type": "array", "items": { "type": "string" } },
           "failure_reason": { "type": ["string", "null"] },
@@ -33,5 +36,5 @@
       }
     }
   },
-  "required": ["suite", "generated_at", "summary", "results"]
+  "required": ["suite", "generated_at", "gate_status", "summary", "results"]
 }

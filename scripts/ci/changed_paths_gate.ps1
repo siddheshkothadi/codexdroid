@@ -36,9 +36,11 @@ $protocolRegexes = @(
     '^app/src/main/java/.*/codex/',
     '^app/src/main/java/.*/data/',
     '^app/src/main/java/.*/ui/session/',
+    '^app/src/main/java/.*/notifications/',
+    '^app/src/main/java/.*/navigation/',
     '^app/src/test/.*/codex/',
     '^harness/',
-    '^docs/harness/specs/reducer_contract\.md$'
+    '^docs/harness/specs/.*\.md$'
 )
 
 foreach ($file in $changed) {

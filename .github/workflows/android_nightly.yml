@@ -33,11 +33,18 @@ jobs:
       - name: Run nightly Android checks
         run: ./gradlew lintDebug testDebugUnitTest assembleDebug
 
-      - name: Run all harness suites
-        run: python harness/runners/cli.py eval --suite all --report harness/reports/nightly_report.json
+      - name: Lint harness docs
+        shell: pwsh
+        run: ./scripts/ci/docs_lint.ps1
 
-      - name: Render nightly markdown summary
+      - name: Run all harness suites
+        run: python harness/runners/cli.py eval --suite all --enforce-thresholds --report harness/reports/nightly_report.json
+
+      - name: Render nightly smoke summary
         run: python harness/runners/cli.py report --input harness/reports/smoke_nightly_report.json --output harness/reports/nightly_summary.md
+
+      - name: Render nightly protocol summary
+        run: python harness/runners/cli.py report --input harness/reports/protocol_nightly_report.json --output harness/reports/protocol_nightly_summary.md
 
       - name: Upload nightly artifacts
         uses: actions/upload-artifact@v4
@@ -47,5 +54,6 @@ jobs:
             harness/reports/smoke_nightly_report.json
             harness/reports/protocol_nightly_report.json
             harness/reports/nightly_summary.md
+            harness/reports/protocol_nightly_summary.md
             app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7

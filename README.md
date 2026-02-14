@@ -11,12 +11,19 @@ CodexDroid is an Android client for OpenAI Codex. It connects to the stream of e
 ## Fast Loop
 
 - Run fast local checks: `scripts/dev/start_fast_loop.ps1`
-- Run smoke harness directly: `python harness/runners/cli.py eval --suite smoke`
-- Run protocol harness directly: `python harness/runners/cli.py eval --suite protocol`
+- Run strict local push gate (recommended before direct pushes to `main`): `scripts/dev/push_main_guard.ps1`
+- Run smoke harness directly: `python harness/runners/cli.py eval --suite smoke --enforce-thresholds`
+- Run protocol harness directly: `python harness/runners/cli.py eval --suite protocol --enforce-thresholds`
+- Install pre-push hook (optional): `scripts/dev/install_githooks.ps1`
 
 ## Harness
 
 - Specs and playbooks: `docs/harness/`
+- Architecture/reliability/security scorecards:
+  - `docs/harness/ARCHITECTURE.md`
+  - `docs/harness/RELIABILITY.md`
+  - `docs/harness/SECURITY.md`
+  - `docs/harness/QUALITY_SCORECARD.md`
 - Harness runner: `harness/runners/cli.py`
 - Scenario suites: `harness/scenarios/`
 - Deterministic fixtures: `harness/fixtures/`

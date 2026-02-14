@@ -1,6 +1,6 @@
 {
   "suite": "protocol",
-  "description": "Protocol-focused checks for Codex WS/router behavior.",
+  "description": "Protocol-focused checks for Codex WS/router behavior and turn lifecycle safety.",
   "scenarios": [
     {
       "id": "protocol.notifications_methods_present",
@@ -8,7 +8,27 @@
       "file": "harness/fixtures/protocol_notifications.json",
       "methods": [
         "turn/started",
+        "item/started",
         "item/agentMessage/delta",
+        "turn/plan/updated",
+        "turn/completed"
+      ]
+    },
+    {
+      "id": "protocol.notifications_fixture_min_events",
+      "kind": "json_array_min_length",
+      "file": "harness/fixtures/protocol_notifications.json",
+      "key": "events",
+      "min_length": 5
+    },
+    {
+      "id": "protocol.notifications_edge_methods_present",
+      "kind": "fixture_methods_include",
+      "file": "harness/fixtures/protocol_notifications_edge.json",
+      "methods": [
+        "item/agentMessage/delta",
+        "item/reasoning/delta",
+        "item/commandExecution/delta",
         "turn/plan/updated",
         "turn/completed"
       ]
@@ -23,10 +43,107 @@
       ]
     },
     {
+      "id": "protocol.server_requests_unknown_method_present",
+      "kind": "fixture_request_methods_include",
+      "file": "harness/fixtures/server_requests.json",
+      "methods": [
+        "item/tool/unknown"
+      ]
+    },
+    {
       "id": "protocol.plan_update_without_threadid_fixture",
       "kind": "fixture_event_has_missing_thread_id",
       "file": "harness/fixtures/protocol_notifications.json",
       "method": "turn/plan/updated"
+    },
+    {
+      "id": "protocol.edge_user_input_missing_questions",
+      "kind": "entry_params_missing_keys",
+      "file": "harness/fixtures/server_requests_edge.json",
+      "key": "requests",
+      "filter_field": "method",
+      "filter_value": "item/tool/requestUserInput",
+      "missing_keys": ["questions"]
+    },
+    {
+      "id": "protocol.reducer_source_handles_key_methods",
+      "kind": "contains_text",
+      "file": "app/src/main/java/me/siddheshkothadi/codexdroid/codex/ThreadEventReducer.kt",
+      "fragments": [
+        "\"turn/started\"",
+        "\"turn/completed\"",
+        "\"turn/plan/updated\"",
+        "\"item/agentMessage/delta\"",
+        "\"item/commandExecution/outputDelta\""
+      ]
+    },
+    {
+      "id": "protocol.reducer_source_unknown_method_tolerance",
+      "kind": "contains_text",
+      "file": "app/src/main/java/me/siddheshkothadi/codexdroid/codex/ThreadEventReducer.kt",
+      "fragments": [
+        "else -> thread"
+      ]
+    },
+    {
+      "id": "protocol.source_contains_thread_start_and_resume",
+      "kind": "contains_text",
+      "file": "app/src/main/java/me/siddheshkothadi/codexdroid/codex/CodexApiService.kt",
+      "fragments": [
+        "\"thread/start\"",
+        "\"thread/resume\"",
+        "source = SessionSource.appServer"
+      ]
+    },
+    {
+      "id": "protocol.source_contains_turn_interrupt_path",
+      "kind": "contains_text",
+      "file": "app/src/main/java/me/siddheshkothadi/codexdroid/codex/CodexApiService.kt",
+      "fragments": [
+        "\"turn/start\"",
+        "\"turn/interrupt\""
+      ]
+    },
+    {
+      "id": "protocol.source_contains_notification_deeplink_contract",
+      "kind": "contains_text",
+      "file": "app/src/main/java/me/siddheshkothadi/codexdroid/codex/CodexEventRouter.kt",
+      "fragments": [
+        "EXTRA_CONNECTION_ID",
+        "EXTRA_THREAD_ID",
+        "EXTRA_TURN_ID",
+        "notifyTurnCompleted"
+      ]
+    },
+    {
+      "id": "protocol.source_has_model_config_fallback_logic",
+      "kind": "contains_text",
+      "file": "app/src/main/java/me/siddheshkothadi/codexdroid/ui/session/SessionViewModel.kt",
+      "fragments": [
+        "readConfig",
+        "parseConfigPreferences",
+        "threadPreferredModel"
+      ]
+    },
+    {
+      "id": "protocol.source_has_effort_fallback_logic",
+      "kind": "contains_text",
+      "file": "app/src/main/java/me/siddheshkothadi/codexdroid/ui/session/SessionViewModel.kt",
+      "fragments": [
+        "threadPreferredEffort",
+        "defaultReasoningEffort",
+        "supportedEfforts"
+      ]
+    },
+    {
+      "id": "protocol.source_parses_user_input_request",
+      "kind": "contains_text",
+      "file": "app/src/main/java/me/siddheshkothadi/codexdroid/codex/requests/PendingRequest.kt",
+      "fragments": [
+        "item/tool/requestUserInput",
+        "parseUserInput",
+        "if (questions.isEmpty()) return null"
+      ]
     }
   ]
 }

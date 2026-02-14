@@ -1,5 +1,7 @@
 # Feature Spec: Turn Start/Interrupt
 
+Last updated: 2026-02-14
+
 ## Goal
 Support fast, predictable turn lifecycle transitions.
 

@@ -1,5 +1,7 @@
 # Feature Spec: Model Selection Persistence
 
+Last updated: 2026-02-14
+
 ## Goal
 Keep model preference sticky at thread scope.
 

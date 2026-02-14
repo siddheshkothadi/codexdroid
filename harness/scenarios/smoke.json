@@ -1,6 +1,6 @@
 {
   "suite": "smoke",
-  "description": "Fast harness checks that protect trunk velocity.",
+  "description": "Fast harness checks that protect direct-to-main trunk velocity.",
   "scenarios": [
     {
       "id": "smoke.required_paths_exist",
@@ -8,10 +8,18 @@
       "paths": [
         "docs/harness/specs",
         "docs/harness/playbooks",
+        "docs/harness/ARCHITECTURE.md",
+        "docs/harness/RELIABILITY.md",
+        "docs/harness/SECURITY.md",
+        "docs/harness/QUALITY_SCORECARD.md",
+        "docs/harness/specs/index.md",
+        "harness/config/gates.json",
         "harness/scenarios",
         "harness/fixtures",
         "scripts/dev/start_fast_loop.ps1",
-        "scripts/ci/changed_paths_gate.ps1"
+        "scripts/dev/push_main_guard.ps1",
+        "scripts/ci/changed_paths_gate.ps1",
+        "scripts/ci/docs_lint.ps1"
       ]
     },
     {
@@ -21,13 +29,101 @@
       "required_keys": ["$schema", "title", "type", "properties", "required"]
     },
     {
+      "id": "smoke.gates_config_shape",
+      "kind": "json_required_keys",
+      "file": "harness/config/gates.json",
+      "required_keys": ["min_pass_rate", "max_flaky"]
+    },
+    {
+      "id": "smoke.spec_index_has_traceability",
+      "kind": "contains_text",
+      "file": "docs/harness/specs/index.md",
+      "fragments": [
+        "## Spec Traceability",
+        "docs/harness/specs/reducer_contract.md",
+        "docs/harness/specs/model_selection_persistence.md"
+      ]
+    },
+    {
       "id": "smoke.reducer_contract_documented",
       "kind": "contains_text",
       "file": "docs/harness/specs/reducer_contract.md",
       "fragments": [
+        "Last updated:",
         "ThreadEventReducer",
         "Item idempotency",
         "Unknown method tolerance"
+      ]
+    },
+    {
+      "id": "smoke.spec_model_selection_persistence_shape",
+      "kind": "contains_text",
+      "file": "docs/harness/specs/model_selection_persistence.md",
+      "fragments": ["Last updated:", "## Goal", "## Contract", "## Acceptance checks"]
+    },
+    {
+      "id": "smoke.spec_effort_selection_persistence_shape",
+      "kind": "contains_text",
+      "file": "docs/harness/specs/effort_selection_persistence.md",
+      "fragments": ["Last updated:", "## Goal", "## Contract", "## Acceptance checks"]
+    },
+    {
+      "id": "smoke.spec_plan_update_rendering_shape",
+      "kind": "contains_text",
+      "file": "docs/harness/specs/plan_update_rendering.md",
+      "fragments": ["Last updated:", "## Goal", "## Contract", "## Acceptance checks"]
+    },
+    {
+      "id": "smoke.spec_thread_start_resume_shape",
+      "kind": "contains_text",
+      "file": "docs/harness/specs/thread_start_resume.md",
+      "fragments": ["Last updated:", "## Goal", "## Contract", "## Acceptance checks"]
+    },
+    {
+      "id": "smoke.spec_turn_start_interrupt_shape",
+      "kind": "contains_text",
+      "file": "docs/harness/specs/turn_start_interrupt.md",
+      "fragments": ["Last updated:", "## Goal", "## Contract", "## Acceptance checks"]
+    },
+    {
+      "id": "smoke.spec_notification_deep_link_shape",
+      "kind": "contains_text",
+      "file": "docs/harness/specs/notification_deep_link.md",
+      "fragments": ["Last updated:", "## Goal", "## Contract", "## Acceptance checks"]
+    },
+    {
+      "id": "smoke.spec_user_input_request_response_shape",
+      "kind": "contains_text",
+      "file": "docs/harness/specs/user_input_request_response.md",
+      "fragments": ["Last updated:", "## Goal", "## Contract", "## Acceptance checks"]
+    },
+    {
+      "id": "smoke.fast_loop_playbook_mentions_push_guard",
+      "kind": "contains_text",
+      "file": "docs/harness/playbooks/fast_loop.md",
+      "fragments": ["Last updated:", "push_main_guard.ps1", "testDebugUnitTest", "eval --suite smoke"]
+    },
+    {
+      "id": "smoke.push_guard_script_has_required_steps",
+      "kind": "contains_text",
+      "file": "scripts/dev/push_main_guard.ps1",
+      "fragments": [
+        "testDebugUnitTest",
+        "eval --suite smoke --enforce-thresholds",
+        "eval --suite protocol --enforce-thresholds",
+        "docs_lint.ps1",
+        "assembleDebug"
+      ]
+    },
+    {
+      "id": "smoke.docs_lint_checks_core_rules",
+      "kind": "contains_text",
+      "file": "scripts/ci/docs_lint.ps1",
+      "fragments": [
+        "Missing required harness doc",
+        "Missing required heading",
+        "Broken link in",
+        "Spec not mapped"
       ]
     }
   ]

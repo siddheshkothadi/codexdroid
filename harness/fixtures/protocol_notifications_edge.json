@@ -1,0 +1,70 @@
+{
+  "events": [
+    {
+      "method": "item/agentMessage/delta",
+      "params": {
+        "threadId": "thread-edge-1",
+        "turnId": "turn-edge-1",
+        "itemId": "item-agent-edge-1",
+        "delta": "delta before item start"
+      }
+    },
+    {
+      "method": "turn/started",
+      "params": {
+        "threadId": "thread-edge-1",
+        "turn": {
+          "id": "turn-edge-1",
+          "status": "inProgress",
+          "items": []
+        }
+      }
+    },
+    {
+      "method": "item/reasoning/delta",
+      "params": {
+        "threadId": "thread-edge-1",
+        "turnId": "turn-edge-1",
+        "itemId": "item-reasoning-edge-1",
+        "delta": "thinking..."
+      }
+    },
+    {
+      "method": "item/commandExecution/delta",
+      "params": {
+        "threadId": "thread-edge-1",
+        "turnId": "turn-edge-1",
+        "itemId": "item-cmd-edge-1",
+        "delta": "running command"
+      }
+    },
+    {
+      "method": "turn/plan/updated",
+      "params": {
+        "turnId": "turn-edge-1",
+        "explanation": "Out-of-order update",
+        "plan": [
+          { "step": "First step", "status": "completed" },
+          { "step": "Second step", "status": "inProgress" }
+        ]
+      }
+    },
+    {
+      "method": "codex/event/unknown",
+      "params": {
+        "threadId": "thread-edge-1"
+      }
+    },
+    {
+      "method": "turn/completed",
+      "params": {
+        "threadId": "thread-edge-1",
+        "turn": {
+          "id": "turn-edge-1",
+          "status": "completed",
+          "items": []
+        }
+      }
+    }
+  ]
+}

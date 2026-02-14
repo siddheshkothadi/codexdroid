@@ -3,9 +3,16 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+
+@dataclass(frozen=True)
+class GateThresholds:
+    min_pass_rate: float
+    max_flaky: int
 
 
 def _trace_ref(payload: dict[str, Any]) -> str:
@@ -72,6 +79,79 @@ def _check_fixture_methods_include(root: Path, scenario: dict[str, Any], key: st
     return [f"Fixture contains expected methods in {rel}."], None
 
 
+def _check_json_array_min_length(root: Path, scenario: dict[str, Any]) -> tuple[list[str], str | None]:
+    rel = scenario.get("file", "")
+    key = scenario.get("key", "")
+    min_length = int(scenario.get("min_length", 0))
+    path = root / rel
+    if not path.exists():
+        return [], f"JSON file not found: {rel}"
+    data = _read_json(path)
+    entries = data.get(key, []) if isinstance(data, dict) else []
+    if not isinstance(entries, list):
+        return [], f"Expected list at key '{key}' in {rel}"
+    if len(entries) < min_length:
+        return [], f"Expected at least {min_length} items at {key} in {rel}, got {len(entries)}"
+    return [f"Found {len(entries)} items at {key} in {rel}."], None
+
+
+def _check_json_entry_missing_keys(root: Path, scenario: dict[str, Any]) -> tuple[list[str], str | None]:
+    rel = scenario.get("file", "")
+    key = scenario.get("key", "")
+    filter_field = scenario.get("filter_field")
+    filter_value = scenario.get("filter_value")
+    required_missing_keys: list[str] = scenario.get("missing_keys", [])
+    path = root / rel
+    if not path.exists():
+        return [], f"JSON file not found: {rel}"
+    data = _read_json(path)
+    entries = data.get(key, []) if isinstance(data, dict) else []
+    if not isinstance(entries, list):
+        return [], f"Expected list at key '{key}' in {rel}"
+
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        if filter_field and entry.get(filter_field) != filter_value:
+            continue
+        if all(missing_key not in entry for missing_key in required_missing_keys):
+            return [f"Found entry matching missing-keys condition in {rel}."], None
+    return [], (
+        f"No entry found in {rel} with filter {filter_field}={filter_value} "
+        f"missing keys {', '.join(required_missing_keys)}"
+    )
+
+
+def _check_entry_params_missing_keys(root: Path, scenario: dict[str, Any]) -> tuple[list[str], str | None]:
+    rel = scenario.get("file", "")
+    key = scenario.get("key", "")
+    filter_field = scenario.get("filter_field")
+    filter_value = scenario.get("filter_value")
+    missing_keys: list[str] = scenario.get("missing_keys", [])
+    path = root / rel
+    if not path.exists():
+        return [], f"JSON file not found: {rel}"
+    data = _read_json(path)
+    entries = data.get(key, []) if isinstance(data, dict) else []
+    if not isinstance(entries, list):
+        return [], f"Expected list at key '{key}' in {rel}"
+
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        if filter_field and entry.get(filter_field) != filter_value:
+            continue
+        params = entry.get("params")
+        if not isinstance(params, dict):
+            continue
+        if all(missing_key not in params for missing_key in missing_keys):
+            return [f"Found {filter_value} entry with params missing keys in {rel}."], None
+
+    return [], (
+        f"No {filter_value} entry found in {rel} with params missing keys {', '.join(missing_keys)}"
+    )
+
+
 def _check_event_has_missing_thread_id(root: Path, scenario: dict[str, Any]) -> tuple[list[str], str | None]:
     rel = scenario.get("file", "")
     method = scenario.get("method", "")
@@ -109,6 +189,12 @@ def evaluate_scenario(root: Path, scenario: dict[str, Any]) -> dict[str, Any]:
         assertions, failure_reason = _check_fixture_methods_include(root, scenario, key="events")
     elif kind == "fixture_request_methods_include":
         assertions, failure_reason = _check_fixture_methods_include(root, scenario, key="requests")
+    elif kind == "json_array_min_length":
+        assertions, failure_reason = _check_json_array_min_length(root, scenario)
+    elif kind == "json_entry_missing_keys":
+        assertions, failure_reason = _check_json_entry_missing_keys(root, scenario)
+    elif kind == "entry_params_missing_keys":
+        assertions, failure_reason = _check_entry_params_missing_keys(root, scenario)
     elif kind == "fixture_event_has_missing_thread_id":
         assertions, failure_reason = _check_event_has_missing_thread_id(root, scenario)
     else:
@@ -128,18 +214,40 @@ def evaluate_scenario(root: Path, scenario: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def evaluate_suite(root: Path, suite_name: str, suite_doc: dict[str, Any]) -> dict[str, Any]:
+def _compute_gate_status(summary: dict[str, Any], thresholds: GateThresholds | None) -> str:
+    if thresholds is None:
+        return "pass" if summary["failed"] == 0 else "fail"
+    return (
+        "pass"
+        if summary["pass_rate"] >= thresholds.min_pass_rate and summary["flake_count"] <= thresholds.max_flaky
+        else "fail"
+    )
+
+
+def evaluate_suite(
+    root: Path,
+    suite_name: str,
+    suite_doc: dict[str, Any],
+    thresholds: GateThresholds | None = None,
+) -> dict[str, Any]:
     results = [evaluate_scenario(root, scenario) for scenario in suite_doc.get("scenarios", [])]
     passed = sum(1 for r in results if r["status"] == "pass")
     failed = len(results) - passed
+    total = len(results)
+    pass_rate = 100.0 if total == 0 else round((passed / total) * 100, 2)
+    flake_count = sum(1 for r in results if r["status"] == "flaky")
+    summary = {
+        "total": total,
+        "passed": passed,
+        "failed": failed,
+        "pass_rate": pass_rate,
+        "flake_count": flake_count,
+    }
     return {
         "suite": suite_name,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "summary": {
-            "total": len(results),
-            "passed": passed,
-            "failed": failed,
-        },
+        "summary": summary,
+        "gate_status": _compute_gate_status(summary, thresholds),
         "results": results,
     }
 
@@ -160,6 +268,9 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"- Total: {summary.get('total', 0)}",
         f"- Passed: {summary.get('passed', 0)}",
         f"- Failed: {summary.get('failed', 0)}",
+        f"- Pass rate: {summary.get('pass_rate', 0)}%",
+        f"- Flaky: {summary.get('flake_count', 0)}",
+        f"- Gate: {report.get('gate_status', 'unknown')}",
         "",
         "## Results",
     ]

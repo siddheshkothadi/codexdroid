@@ -1,5 +1,7 @@
 # Feature Spec: Plan Update Rendering
 
+Last updated: 2026-02-14
+
 ## Goal
 Render plan updates in-session without dropping status transitions.
 

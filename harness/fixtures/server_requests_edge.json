@@ -1,0 +1,37 @@
+{
+  "requests": [
+    {
+      "id": 9901,
+      "method": "tool/requestApproval",
+      "params": {
+        "tool": "shell_command"
+      }
+    },
+    {
+      "id": 9902,
+      "method": "item/tool/requestUserInput",
+      "params": {
+        "threadId": "thread-edge-1",
+        "turnId": "turn-edge-1",
+        "itemId": "item-user-input-edge-1"
+      }
+    },
+    {
+      "id": 9903,
+      "method": "item/tool/requestUserInput",
+      "params": {
+        "threadId": "thread-edge-1",
+        "turnId": "turn-edge-1",
+        "itemId": "item-user-input-edge-2",
+        "questions": []
+      }
+    },
+    {
+      "id": 9904,
+      "method": "item/tool/unknown",
+      "params": {
+        "note": "Edge unknown request"
+      }
+    }
+  ]
+}

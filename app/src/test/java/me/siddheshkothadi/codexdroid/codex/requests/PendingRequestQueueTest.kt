@@ -82,4 +82,37 @@ class PendingRequestQueueTest {
         assertEquals(33L, next?.requestId)
         assertEquals("item/tool/unknown", next?.method)
     }
+
+    @Test
+    fun parseUserInput_withMissingQuestions_returnsUnknown() {
+        val request =
+            ServerRequest(
+                method = "item/tool/requestUserInput",
+                id = 44,
+                params =
+                    buildJsonObject {
+                        put("threadId", "thread-1")
+                        put("turnId", "turn-1")
+                        put("itemId", "item-1")
+                    },
+            )
+
+        val parsed = PendingRequestParser.parse(request)
+
+        assertTrue(parsed is UnknownPendingRequest)
+        assertEquals(44L, parsed.requestId)
+    }
+
+    @Test
+    fun approvals_areServedFifo() {
+        val queue: PendingRequestQueue = InMemoryPendingRequestQueue()
+        queue.enqueue(ApprovalPendingRequest(requestId = 101, method = "tool/requestApproval"))
+        queue.enqueue(ApprovalPendingRequest(requestId = 102, method = "tool/requestApproval"))
+
+        val first = queue.nextApproval(current = null)
+        val second = queue.nextApproval(current = null)
+
+        assertEquals(101L, first?.requestId)
+        assertEquals(102L, second?.requestId)
+    }
 }

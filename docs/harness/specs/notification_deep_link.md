@@ -1,5 +1,7 @@
 # Feature Spec: Notification Deep Link
 
+Last updated: 2026-02-14
+
 ## Goal
 Drive background completion notifications back into the correct thread context.
 

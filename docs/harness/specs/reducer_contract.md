@@ -1,5 +1,11 @@
 # Reducer Contract
 
+Last updated: 2026-02-14
+
+## Goal
+Define non-negotiable correctness invariants for `ThreadEventReducer`.
+
+## Contract
 `ThreadEventReducer` must satisfy these invariants:
 
 1. **Thread safety by id**

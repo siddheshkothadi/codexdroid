@@ -35,8 +35,12 @@ jobs:
       - name: Run fast Android checks
         run: ./gradlew testDebugUnitTest assembleDebug
 
+      - name: Lint harness docs
+        shell: pwsh
+        run: ./scripts/ci/docs_lint.ps1
+
       - name: Run smoke harness suite
-        run: python harness/runners/cli.py eval --suite smoke --report harness/reports/fast_smoke_report.json
+        run: python harness/runners/cli.py eval --suite smoke --enforce-thresholds --report harness/reports/fast_smoke_report.json
 
       - name: Upload debug APK and smoke report
         uses: actions/upload-artifact@v4

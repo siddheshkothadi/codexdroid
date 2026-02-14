@@ -1,5 +1,7 @@
 # Feature Spec: Approval Request Response
 
+Last updated: 2026-02-14
+
 ## Goal
 Process server approval prompts with explicit user decisions.
 

@@ -1,5 +1,7 @@
 # Feature Spec: User Input Request Response
 
+Last updated: 2026-02-14
+
 ## Goal
 Support structured request/response loops for tool-driven user input.
 

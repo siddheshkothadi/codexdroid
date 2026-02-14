@@ -1,5 +1,7 @@
 # Feature Spec: Effort Selection Persistence
 
+Last updated: 2026-02-14
+
 ## Goal
 Persist reasoning effort preferences per thread.
 

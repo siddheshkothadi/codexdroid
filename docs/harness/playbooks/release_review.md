@@ -1,9 +1,12 @@
 # Release Review Playbook
 
-1. Run nightly harness suites (`smoke` + `protocol`).
+Last updated: 2026-02-14
+
+1. Run nightly harness suites (`smoke` + `protocol`) with threshold enforcement.
 2. Review failures by scenario id and fixture trace references.
-3. Confirm protocol-affecting changes include fixture/test updates.
-4. Publish weekly harness KPI summary:
+3. If `main` is red after a direct push, apply immediate fix-forward commit.
+4. Confirm feature changes include spec + scenario updates.
+5. Publish weekly harness KPI summary:
    - smoke pass rate
    - protocol pass rate
    - median scenario latency

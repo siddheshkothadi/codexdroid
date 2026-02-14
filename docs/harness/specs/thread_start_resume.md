@@ -1,5 +1,7 @@
 # Feature Spec: Thread Start/Resume
 
+Last updated: 2026-02-14
+
 ## Goal
 Guarantee deterministic session bootstrapping for new and existing threads.
 

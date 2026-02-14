@@ -14,10 +14,12 @@ This file is the agent-facing map of the repository, aligned with harness-first 
 
 1. Harness specs: `docs/harness/specs/`
 2. Harness playbooks: `docs/harness/playbooks/`
-3. Harness runner: `harness/runners/cli.py`
-4. Scenarios: `harness/scenarios/`
-5. Fixtures: `harness/fixtures/`
-6. Report schema: `harness/reports/schema.json`
+3. Harness architecture + governance docs: `docs/harness/ARCHITECTURE.md`, `docs/harness/RELIABILITY.md`, `docs/harness/SECURITY.md`, `docs/harness/QUALITY_SCORECARD.md`
+4. Harness runner: `harness/runners/cli.py`
+5. Scenarios: `harness/scenarios/`
+6. Fixtures: `harness/fixtures/`
+7. Gate config: `harness/config/gates.json`
+8. Report schema: `harness/reports/schema.json`
 
 ## CI map
 
@@ -29,9 +31,11 @@ This file is the agent-facing map of the repository, aligned with harness-first 
 
 1. `./gradlew testDebugUnitTest`
 2. `python harness/runners/cli.py eval --suite smoke`
-3. `./gradlew assembleDebug`
+3. `scripts/ci/docs_lint.ps1`
+4. `./gradlew assembleDebug`
 
 Use `scripts/dev/start_fast_loop.ps1` to run the same sequence.
+Use `scripts/dev/push_main_guard.ps1` before direct pushes to `main`.
 
 ## Path-based harness gating
 

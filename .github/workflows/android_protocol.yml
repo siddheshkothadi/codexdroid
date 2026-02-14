@@ -31,29 +31,20 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Decide impacted suites
-        id: gate
-        shell: pwsh
-        run: ./scripts/ci/changed_paths_gate.ps1
-
       - name: Grant execute permission for gradlew
-        if: contains(steps.gate.outputs.suites, 'protocol')
         run: chmod +x gradlew
 
       - name: Run protocol-focused unit tests
-        if: contains(steps.gate.outputs.suites, 'protocol')
         run: ./gradlew testDebugUnitTest --tests '*ThreadEventReducerTest' --tests '*PendingRequestQueueTest'
 
-      - name: Run protocol harness suite
-        if: contains(steps.gate.outputs.suites, 'protocol')
-        run: python harness/runners/cli.py eval --suite protocol --report harness/reports/protocol_report.json
+      - name: Lint harness docs
+        shell: pwsh
+        run: ./scripts/ci/docs_lint.ps1
 
-      - name: Skip message
-        if: ${{ !contains(steps.gate.outputs.suites, 'protocol') }}
-        run: echo "Protocol suite not required for this change set."
+      - name: Run protocol harness suite
+        run: python harness/runners/cli.py eval --suite protocol --enforce-thresholds --report harness/reports/protocol_report.json
 
       - name: Upload protocol report
-        if: contains(steps.gate.outputs.suites, 'protocol')
         uses: actions/upload-artifact@v4
         with:
           name: protocol-ci-report

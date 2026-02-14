@@ -12,14 +12,15 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import me.siddheshkothadi.codexdroid.MainActivity
 import me.siddheshkothadi.codexdroid.R
-import me.siddheshkothadi.codexdroid.data.local.ConnectionManager
+import me.siddheshkothadi.codexdroid.di.IoDispatcher
+import me.siddheshkothadi.codexdroid.domain.usecase.GetConnectionsUseCase
 import me.siddheshkothadi.codexdroid.navigation.CodexDroidAppLinkKeys
 import javax.inject.Inject
 
@@ -34,17 +35,19 @@ import javax.inject.Inject
 class CodexKeepAliveService : Service() {
     private val tag = "CodexKeepAliveService"
 
-    @Inject lateinit var connectionManager: ConnectionManager
+    @Inject lateinit var getConnectionsUseCase: GetConnectionsUseCase
     @Inject lateinit var clientManager: CodexClientManager
+    @Inject @IoDispatcher lateinit var ioDispatcher: CoroutineDispatcher
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private lateinit var scope: CoroutineScope
 
     override fun onCreate() {
         super.onCreate()
+        scope = CoroutineScope(SupervisorJob() + ioDispatcher)
         startForegroundSafely()
 
         scope.launch {
-            connectionManager.connections.collectLatest { connections ->
+            getConnectionsUseCase().collectLatest { connections ->
                 val active = connections.firstOrNull()
                 if (active == null || active.baseUrl.isBlank()) {
                     try {
@@ -122,8 +125,10 @@ class CodexKeepAliveService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        scope.launch {
-            runCatching { clientManager.closeActive() }
+        if (::scope.isInitialized) {
+            scope.launch {
+                runCatching { clientManager.closeActive() }
+            }
         }
     }
 

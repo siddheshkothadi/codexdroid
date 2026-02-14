@@ -2,18 +2,19 @@ package me.siddheshkothadi.codexdroid.ui.history
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.util.Log
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import android.util.Log
 import me.siddheshkothadi.codexdroid.codex.ConnectionStatus
-import me.siddheshkothadi.codexdroid.codex.CodexApiService
 import me.siddheshkothadi.codexdroid.codex.Thread
-import me.siddheshkothadi.codexdroid.data.local.Connection
-import me.siddheshkothadi.codexdroid.data.repository.ConnectionRepository
+import me.siddheshkothadi.codexdroid.domain.model.Connection
+import me.siddheshkothadi.codexdroid.domain.usecase.DeleteConnectionUseCase
 import me.siddheshkothadi.codexdroid.domain.usecase.GetConnectionsUseCase
 import me.siddheshkothadi.codexdroid.domain.usecase.GetThreadsUseCase
+import me.siddheshkothadi.codexdroid.domain.usecase.MarkConnectionUsedUseCase
+import me.siddheshkothadi.codexdroid.domain.usecase.PingConnectionUseCase
 import me.siddheshkothadi.codexdroid.domain.usecase.RefreshThreadsUseCase
 import javax.inject.Inject
 
@@ -22,13 +23,14 @@ class HistoryViewModel @Inject constructor(
     private val getConnectionsUseCase: GetConnectionsUseCase,
     private val getThreadsUseCase: GetThreadsUseCase,
     private val refreshThreadsUseCase: RefreshThreadsUseCase,
-    private val connectionRepository: ConnectionRepository,
-    private val apiService: CodexApiService,
+    private val markConnectionUsedUseCase: MarkConnectionUsedUseCase,
+    private val deleteConnectionUseCase: DeleteConnectionUseCase,
+    private val pingConnectionUseCase: PingConnectionUseCase,
 ) : ViewModel() {
     private val tag = "HistoryViewModel"
 
-    val connections: StateFlow<List<Connection>> = getConnectionsUseCase()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val connections: StateFlow<List<Connection>> =
+        getConnectionsUseCase().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing
@@ -39,21 +41,41 @@ class HistoryViewModel @Inject constructor(
     private val _connectionStatus = MutableStateFlow(ConnectionStatus.Unknown)
     val connectionStatus: StateFlow<ConnectionStatus> = _connectionStatus
 
+    private val activeConnectionFlow: Flow<Connection?> =
+        connections
+            .map { it.firstOrNull() }
+            .distinctUntilChangedBy { it?.id }
+
+    init {
+        observeActiveConnection()
+    }
+
     @OptIn(ExperimentalCoroutinesApi::class)
-    val uiState: StateFlow<HistoryUiState> = connections
-        .flatMapLatest { connections ->
-            if (connections.isEmpty()) {
-                flowOf(HistoryUiState.Empty)
-            } else {
-                val activeConnection = connections.first()
-                checkConnection(activeConnection)
-                refreshHistory(activeConnection)
-                getThreadsUseCase(activeConnection.id).map { threads ->
-                    HistoryUiState.Success(threads)
+    val uiState: StateFlow<HistoryUiState> =
+        activeConnectionFlow
+            .flatMapLatest { activeConnection ->
+                if (activeConnection == null) {
+                    flowOf(HistoryUiState.Empty)
+                } else {
+                    getThreadsUseCase(activeConnection.id).map { threads ->
+                        HistoryUiState.Success(threads)
+                    }
                 }
             }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HistoryUiState.Loading)
+
+    private fun observeActiveConnection() {
+        viewModelScope.launch {
+            activeConnectionFlow.collectLatest { activeConnection ->
+                if (activeConnection == null) {
+                    _connectionStatus.value = ConnectionStatus.Unknown
+                    return@collectLatest
+                }
+                checkConnection(activeConnection)
+                refreshHistory(activeConnection)
+            }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HistoryUiState.Loading)
+    }
 
     fun refreshHistory(connection: Connection? = null) {
         viewModelScope.launch {
@@ -75,26 +97,21 @@ class HistoryViewModel @Inject constructor(
     private fun checkConnection(connection: Connection) {
         _connectionStatus.value = ConnectionStatus.Checking
         viewModelScope.launch {
-            val ok =
-                try {
-                    apiService.ping(connection.baseUrl, connection.secret)
-                } catch (_: Exception) {
-                    false
-                }
+            val ok = pingConnectionUseCase(connection)
             _connectionStatus.value = if (ok) ConnectionStatus.Healthy else ConnectionStatus.Unhealthy
         }
     }
 
     fun selectConnection(connection: Connection) {
         viewModelScope.launch {
-            connectionRepository.updateLastUsed(connection.id)
+            markConnectionUsedUseCase(connection.id)
         }
     }
 
     fun deleteConnection(connectionId: String) {
         viewModelScope.launch {
             try {
-                connectionRepository.deleteConnection(connectionId)
+                deleteConnectionUseCase(connectionId)
             } catch (e: Exception) {
                 Log.w(tag, "Failed to delete connection", e)
                 _error.value = e.message ?: "Failed to delete connection"

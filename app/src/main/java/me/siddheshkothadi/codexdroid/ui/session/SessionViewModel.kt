@@ -24,12 +24,8 @@ import me.siddheshkothadi.codexdroid.codex.requests.PendingRequestParser
 import me.siddheshkothadi.codexdroid.codex.requests.PendingRequestQueue
 import me.siddheshkothadi.codexdroid.codex.requests.UnknownPendingRequest
 import me.siddheshkothadi.codexdroid.codex.requests.UserInputPendingRequest
-import me.siddheshkothadi.codexdroid.data.local.Connection
-import me.siddheshkothadi.codexdroid.data.repository.ConnectionRepository
-import me.siddheshkothadi.codexdroid.data.repository.ThreadRepository
-import me.siddheshkothadi.codexdroid.domain.usecase.GetConnectionsUseCase
-import me.siddheshkothadi.codexdroid.domain.usecase.GetThreadsUseCase
-import me.siddheshkothadi.codexdroid.domain.usecase.RefreshThreadsUseCase
+import me.siddheshkothadi.codexdroid.domain.model.Connection
+import me.siddheshkothadi.codexdroid.domain.usecase.*
 import javax.inject.Inject
 
 /**
@@ -87,9 +83,22 @@ class SessionViewModel @Inject constructor(
     private val getConnectionsUseCase: GetConnectionsUseCase,
     private val getThreadsUseCase: GetThreadsUseCase,
     private val refreshThreadsUseCase: RefreshThreadsUseCase,
-    private val connectionRepository: ConnectionRepository,
-    private val apiService: CodexApiService,
-    private val threadRepository: ThreadRepository,
+    private val getThreadUseCase: GetThreadUseCase,
+    private val observeThreadUseCase: ObserveThreadUseCase,
+    private val upsertThreadUseCase: UpsertThreadUseCase,
+    private val startThreadUseCase: StartThreadUseCase,
+    private val resumeThreadUseCase: ResumeThreadUseCase,
+    private val startTurnUseCase: StartTurnUseCase,
+    private val readThreadUseCase: ReadThreadUseCase,
+    private val interruptTurnUseCase: InterruptTurnUseCase,
+    private val listModelsUseCase: ListModelsUseCase,
+    private val listSkillsUseCase: ListSkillsUseCase,
+    private val readConfigUseCase: ReadConfigUseCase,
+    private val respondToApprovalRequestUseCase: RespondToApprovalRequestUseCase,
+    private val respondToUserInputRequestUseCase: RespondToUserInputRequestUseCase,
+    private val pingConnectionUseCase: PingConnectionUseCase,
+    private val markConnectionUsedUseCase: MarkConnectionUsedUseCase,
+    private val deleteConnectionUseCase: DeleteConnectionUseCase,
     private val eventRouter: CodexEventRouter,
 ) : ViewModel() {
     private val tag = "SessionViewModel"
@@ -151,7 +160,7 @@ class SessionViewModel @Inject constructor(
                     clientModel = model,
                     clientEffort = effort,
                 )
-            threadRepository.upsertThread(conn.id, updated)
+            upsertThreadUseCase(conn.id, updated)
         }
     }
 
@@ -169,9 +178,9 @@ class SessionViewModel @Inject constructor(
         if (!force && key == lastControlsKey && _uiState.value.models.isNotEmpty()) return
         _uiState.update { it.copy(isControlsSyncing = true, controlsError = null) }
         try {
-            val modelsResp = runCatching { apiService.listModels(connection.baseUrl, connection.secret) }.getOrNull()
-            val skillsResp = runCatching { apiService.listSkills(connection.baseUrl, connection.secret, cwd) }.getOrNull()
-            val configResp = runCatching { apiService.readConfig(connection.baseUrl, connection.secret) }.getOrNull()
+            val modelsResp = runCatching { listModelsUseCase(connection.baseUrl, connection.secret) }.getOrNull()
+            val skillsResp = runCatching { listSkillsUseCase(connection.baseUrl, connection.secret, cwd) }.getOrNull()
+            val configResp = runCatching { readConfigUseCase(connection.baseUrl, connection.secret) }.getOrNull()
 
             val models = modelsResp?.result?.let { parseModels(it) }.orEmpty()
             val skills = skillsResp?.result?.let { parseSkills(it) }.orEmpty()
@@ -479,11 +488,11 @@ class SessionViewModel @Inject constructor(
     }
 
     private suspend fun openThreadOnConnection(connection: Connection, threadId: String, turnId: String?) {
-        val cached = threadRepository.getThread(connection.id, threadId)
+        val cached = getThreadUseCase(connection.id, threadId)
         if (cached == null) {
             runCatching {
-                val resp = apiService.readThread(connection.baseUrl, connection.secret, threadId)
-                resp.result?.thread?.let { threadRepository.upsertThread(connection.id, it) }
+                val resp = readThreadUseCase(connection.baseUrl, connection.secret, threadId)
+                resp.result?.thread?.let { upsertThreadUseCase(connection.id, it) }
             }
         }
         _uiState.update { it.copy(scrollToTurnId = turnId) }
@@ -505,7 +514,7 @@ class SessionViewModel @Inject constructor(
                             var didAutoSelect = false
                             var selected: Thread? = null
                             if (_uiState.value.currentThread == null && threads.isNotEmpty() && autoSelectedConnectionId != active.id) {
-                                selected = threadRepository.getThread(active.id, threads.first().id) ?: threads.first()
+                                selected = getThreadUseCase(active.id, threads.first().id) ?: threads.first()
                                 didAutoSelect = true
                             }
 
@@ -572,7 +581,7 @@ class SessionViewModel @Inject constructor(
         val pending = _uiState.value.pendingApproval ?: return
         viewModelScope.launch {
             try {
-                apiService.respondToApprovalRequest(conn.baseUrl, conn.secret, pending.requestId, decision)
+                respondToApprovalRequestUseCase(conn.baseUrl, conn.secret, pending.requestId, decision)
             } catch (e: Exception) {
                 Log.w(tag, "Failed to respond to approval request", e)
             } finally {
@@ -587,7 +596,7 @@ class SessionViewModel @Inject constructor(
         val pending = _uiState.value.pendingUserInput ?: return
         viewModelScope.launch {
             try {
-                apiService.respondToUserInputRequest(conn.baseUrl, conn.secret, pending.requestId, answers)
+                respondToUserInputRequestUseCase(conn.baseUrl, conn.secret, pending.requestId, answers)
             } catch (e: Exception) {
                 Log.w(tag, "Failed to respond to user input request", e)
             } finally {
@@ -624,7 +633,7 @@ class SessionViewModel @Inject constructor(
                 var thread = _uiState.value.currentThread
                 if (thread == null) {
                     val resp =
-                        apiService.startThread(
+                        startThreadUseCase(
                             connection.baseUrl,
                             connection.secret,
                             cwd = _uiState.value.selectedCwd
@@ -635,20 +644,20 @@ class SessionViewModel @Inject constructor(
                             clientModel = _uiState.value.selectedModelId,
                             clientEffort = _uiState.value.selectedEffort,
                         )
-                    threadRepository.upsertThread(connection.id, thread)
+                    upsertThreadUseCase(connection.id, thread)
                     selectThreadId(connection.id, thread.id)
                 } else {
-                    apiService.resumeThread(connection.baseUrl, connection.secret, thread.id)
+                    resumeThreadUseCase(connection.baseUrl, connection.secret, thread.id)
                 }
 
                 // 2. Start turn
                 val effectiveCwd = thread.cwd.takeIf { it.isNotBlank() } ?: _uiState.value.selectedCwd
                 val turnResp =
-                    apiService.startTurn(
-                        connection.baseUrl,
-                        connection.secret,
-                        thread.id,
-                        text,
+                    startTurnUseCase(
+                        baseUrl = connection.baseUrl,
+                        secret = connection.secret,
+                        threadId = thread.id,
+                        text = text,
                         cwd = effectiveCwd,
                         model = _uiState.value.selectedModelId,
                         effort = _uiState.value.selectedEffort,
@@ -695,9 +704,9 @@ class SessionViewModel @Inject constructor(
             }
 
             // Ensure we have a DB row (history list may be metadata-only).
-            val cached = threadRepository.getThread(conn.id, thread.id)
+            val cached = getThreadUseCase(conn.id, thread.id)
             if (cached == null) {
-                threadRepository.upsertThread(conn.id, thread)
+                upsertThreadUseCase(conn.id, thread)
             }
             selectThreadId(conn.id, thread.id)
             refreshThreadFromServer(conn, thread.id)
@@ -725,7 +734,7 @@ class SessionViewModel @Inject constructor(
         observeThreadJob?.cancel()
         observeThreadJob =
             viewModelScope.launch {
-                threadRepository.observeThread(connectionId, threadId).collect { t ->
+                observeThreadUseCase(connectionId, threadId).collect { t ->
                     if (t == null) return@collect
                     val now = System.currentTimeMillis()
                     val runningTurn = t.turns.lastOrNull { it.status == TurnStatus.inProgress }
@@ -820,12 +829,12 @@ class SessionViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isThreadSyncing = true) }
             try {
-                val resp = apiService.readThread(connection.baseUrl, connection.secret, threadId)
+                val resp = readThreadUseCase(connection.baseUrl, connection.secret, threadId)
                 val serverThread = resp.result?.thread ?: return@launch
-                val existing = threadRepository.getThread(connection.id, threadId)
+                val existing = getThreadUseCase(connection.id, threadId)
                 val mergedTurns =
                     if (existing != null && existing.turns.isNotEmpty()) existing.turns else serverThread.turns
-                threadRepository.upsertThread(
+                upsertThreadUseCase(
                     connection.id,
                     serverThread.copy(
                         turns = mergedTurns,
@@ -847,12 +856,7 @@ class SessionViewModel @Inject constructor(
         connectionCheckJob?.cancel()
         _uiState.update { it.copy(connectionStatus = ConnectionStatus.Checking) }
         connectionCheckJob = viewModelScope.launch {
-            val ok =
-                try {
-                    apiService.ping(connection.baseUrl, connection.secret)
-                } catch (_: Exception) {
-                    false
-                }
+            val ok = pingConnectionUseCase(connection)
             _uiState.update { it.copy(connectionStatus = if (ok) ConnectionStatus.Healthy else ConnectionStatus.Unhealthy) }
 
             if (ok) {
@@ -892,7 +896,7 @@ class SessionViewModel @Inject constructor(
 
             // Fallback: thread/read exposes turn completion status even if /events dropped.
             val done = try {
-                val resp = apiService.readThread(connection.baseUrl, connection.secret, threadId)
+                val resp = readThreadUseCase(connection.baseUrl, connection.secret, threadId)
                 val serverThread = resp.result?.thread
                 val turns = serverThread?.turns.orEmpty()
 
@@ -926,7 +930,7 @@ class SessionViewModel @Inject constructor(
 
     fun selectConnection(connection: Connection) {
         viewModelScope.launch {
-            connectionRepository.updateLastUsed(connection.id)
+            markConnectionUsedUseCase(connection.id)
             _uiState.update {
                 it.copy(
                     currentThread = null,
@@ -943,7 +947,7 @@ class SessionViewModel @Inject constructor(
     fun deleteConnection(connectionId: String) {
         viewModelScope.launch {
             try {
-                connectionRepository.deleteConnection(connectionId)
+                deleteConnectionUseCase(connectionId)
             } catch (e: Exception) {
                 Log.w(tag, "Failed to delete connection", e)
                 _uiState.update { it.copy(error = e.message) }
@@ -958,7 +962,7 @@ class SessionViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 pollJob?.cancel()
-                apiService.interruptTurn(connection.baseUrl, connection.secret, threadId, turnId)
+                interruptTurnUseCase(connection.baseUrl, connection.secret, threadId, turnId)
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message) }
             }

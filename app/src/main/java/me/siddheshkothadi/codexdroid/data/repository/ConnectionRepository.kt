@@ -2,30 +2,88 @@ package me.siddheshkothadi.codexdroid.data.repository
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import me.siddheshkothadi.codexdroid.data.local.Connection
-import me.siddheshkothadi.codexdroid.data.local.ConnectionManager
+import me.siddheshkothadi.codexdroid.data.local.ConnectionDao
+import me.siddheshkothadi.codexdroid.data.local.ConnectionEntity
+import me.siddheshkothadi.codexdroid.domain.model.Connection
+import me.siddheshkothadi.codexdroid.data.local.CryptoManager
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class ConnectionRepository @Inject constructor(
-    private val connectionManager: ConnectionManager
+    private val connectionDao: ConnectionDao,
+    private val cryptoManager: CryptoManager,
 ) {
-    fun getAllConnections(): Flow<List<Connection>> = connectionManager.connections
+    fun getAllConnections(): Flow<List<Connection>> {
+        return connectionDao.getAllConnections().map { entities ->
+            entities.map { it.toDomain() }.sortedByDescending { it.updatedAt }
+        }
+    }
 
     suspend fun addConnection(name: String, baseUrl: String, secret: String) {
-        connectionManager.addConnection(name, baseUrl, secret)
+        val entity =
+            ConnectionEntity(
+                id = java.util.UUID.randomUUID().toString(),
+                name = name,
+                baseUrl = baseUrl,
+                encryptedSecret = encryptSecret(secret),
+            )
+        connectionDao.upsertConnection(entity)
     }
 
     suspend fun updateConnection(id: String, name: String, baseUrl: String, secret: String) {
-        connectionManager.updateConnection(id, name, baseUrl, secret)
+        val updated =
+            ConnectionEntity(
+                id = id,
+                name = name,
+                baseUrl = baseUrl,
+                encryptedSecret = encryptSecret(secret),
+                updatedAt = System.currentTimeMillis(),
+            )
+        connectionDao.upsertConnection(updated)
     }
 
     suspend fun updateLastUsed(id: String) {
-        connectionManager.updateLastUsed(id)
+        connectionDao.updateLastUsed(id, System.currentTimeMillis())
     }
 
     suspend fun deleteConnection(id: String) {
-        connectionManager.deleteConnection(id)
+        connectionDao.deleteConnectionById(id)
+    }
+
+    suspend fun importConnections(connections: List<Connection>) {
+        if (connections.isEmpty()) return
+        val entities =
+            connections.map { conn ->
+                ConnectionEntity(
+                    id = conn.id,
+                    name = conn.name,
+                    baseUrl = conn.baseUrl,
+                    encryptedSecret = encryptSecret(conn.secret),
+                    updatedAt = conn.updatedAt,
+                )
+            }
+        connectionDao.upsertConnections(entities)
+    }
+
+    private fun ConnectionEntity.toDomain(): Connection {
+        val secret =
+            if (encryptedSecret.isBlank()) {
+                ""
+            } else {
+                runCatching { cryptoManager.decrypt(encryptedSecret) }.getOrDefault("")
+            }
+        return Connection(
+            id = id,
+            name = name,
+            baseUrl = baseUrl,
+            secret = secret,
+            updatedAt = updatedAt,
+        )
+    }
+
+    private fun encryptSecret(secret: String): String {
+        if (secret.isBlank()) return ""
+        return cryptoManager.encrypt(secret)
     }
 }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import me.siddheshkothadi.codexdroid.ui.components.CodexDroidDrawerContent
 
@@ -23,10 +24,10 @@ fun HistoryScreen(
     onEditConnectionClick: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val connections by viewModel.connections.collectAsState()
-    val isRefreshing by viewModel.isRefreshing.collectAsState()
-    val connectionStatus by viewModel.connectionStatus.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val connections by viewModel.connections.collectAsStateWithLifecycle()
+    val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    val connectionStatus by viewModel.connectionStatus.collectAsStateWithLifecycle()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
 

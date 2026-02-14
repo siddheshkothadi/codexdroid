@@ -37,7 +37,7 @@ import kotlinx.coroutines.launch
 import me.siddheshkothadi.codexdroid.codex.Thread
 import me.siddheshkothadi.codexdroid.codex.ConnectionStatus
 import me.siddheshkothadi.codexdroid.codex.TurnStatus
-import me.siddheshkothadi.codexdroid.data.local.Connection
+import me.siddheshkothadi.codexdroid.domain.model.Connection
 import me.siddheshkothadi.codexdroid.ui.history.HistoryUiState
 
 @OptIn(ExperimentalFoundationApi::class)

@@ -7,10 +7,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.rememberNavController
 import dagger.hilt.android.AndroidEntryPoint
 import me.siddheshkothadi.codexdroid.navigation.toCodexDroidAppLinkOrNull
@@ -53,8 +53,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             CodexDroidTheme {
                 val navController = rememberNavController()
-                val startDestination by viewModel.startDestination.collectAsState()
-                val isLoading by viewModel.isLoading.collectAsState()
+                val startDestination by viewModel.startDestination.collectAsStateWithLifecycle()
+                val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
 
                 if (!isLoading) {
                     NavGraph(

@@ -5,9 +5,9 @@ import androidx.room.PrimaryKey
 
 @Entity(tableName = "connections")
 data class ConnectionEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @PrimaryKey val id: String,
     val name: String,
     val baseUrl: String,
-    val secret: String,
+    val encryptedSecret: String,
     val updatedAt: Long = System.currentTimeMillis()
 )

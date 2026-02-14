@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.halilibo.richtext.commonmark.Markdown
 import com.halilibo.richtext.ui.material3.RichText
 import kotlin.math.max
@@ -68,8 +69,8 @@ fun SessionScreen(
     onNoConnections: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val connections by viewModel.connections.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val connections by viewModel.connections.collectAsStateWithLifecycle()
     var hasSeenConnection by remember { mutableStateOf(false) }
     var showControlsSheet by remember { mutableStateOf(false) }
 

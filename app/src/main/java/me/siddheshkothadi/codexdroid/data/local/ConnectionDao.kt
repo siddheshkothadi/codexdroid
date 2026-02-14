@@ -9,11 +9,17 @@ interface ConnectionDao {
     fun getAllConnections(): Flow<List<ConnectionEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertConnection(connection: ConnectionEntity): Long
+    suspend fun upsertConnection(connection: ConnectionEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertConnections(connections: List<ConnectionEntity>)
+
+    @Query("SELECT * FROM connections WHERE id = :id LIMIT 1")
+    suspend fun getConnectionById(id: String): ConnectionEntity?
 
     @Query("UPDATE connections SET updatedAt = :timestamp WHERE id = :id")
-    suspend fun updateLastUsed(id: Long, timestamp: Long = System.currentTimeMillis())
+    suspend fun updateLastUsed(id: String, timestamp: Long = System.currentTimeMillis())
 
-    @Delete
-    suspend fun deleteConnection(connection: ConnectionEntity)
+    @Query("DELETE FROM connections WHERE id = :id")
+    suspend fun deleteConnectionById(id: String)
 }

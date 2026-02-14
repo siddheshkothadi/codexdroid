@@ -4,7 +4,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import android.util.Log
 import me.siddheshkothadi.codexdroid.codex.*
-import me.siddheshkothadi.codexdroid.data.local.Connection
+import me.siddheshkothadi.codexdroid.domain.model.Connection
 import me.siddheshkothadi.codexdroid.data.local.ThreadDao
 import me.siddheshkothadi.codexdroid.data.local.ThreadEntity
 import javax.inject.Inject

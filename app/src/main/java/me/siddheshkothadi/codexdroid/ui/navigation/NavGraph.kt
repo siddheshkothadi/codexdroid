@@ -2,10 +2,10 @@ package me.siddheshkothadi.codexdroid.ui.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -82,9 +82,9 @@ fun NavGraph(
             )
         ) {
             val viewModel: SetupViewModel = hiltViewModel()
-            val uiState by viewModel.uiState.collectAsState()
-            val connectionToEdit by viewModel.connectionToEdit.collectAsState()
-            val connections by viewModel.connections.collectAsState()
+            val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+            val connectionToEdit by viewModel.connectionToEdit.collectAsStateWithLifecycle()
+            val connections by viewModel.connections.collectAsStateWithLifecycle()
 
             LaunchedEffect(uiState) {
                 if (uiState is SetupUiState.Success) {
@@ -132,7 +132,7 @@ fun NavGraph(
             )
         ) {
             val viewModel: SessionViewModel = hiltViewModel()
-            val connections by viewModel.connections.collectAsState()
+            val connections by viewModel.connections.collectAsStateWithLifecycle()
             val connectionId = it.arguments?.getString("connectionId")
             val threadId = it.arguments?.getString("threadId")
             val turnId = it.arguments?.getString("turnId")

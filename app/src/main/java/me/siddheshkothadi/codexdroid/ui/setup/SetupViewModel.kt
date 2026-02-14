@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import me.siddheshkothadi.codexdroid.data.local.Connection
+import me.siddheshkothadi.codexdroid.domain.model.Connection
 import me.siddheshkothadi.codexdroid.domain.usecase.AddConnectionUseCase
 import me.siddheshkothadi.codexdroid.domain.usecase.GetConnectionsUseCase
 import me.siddheshkothadi.codexdroid.domain.usecase.UpdateConnectionUseCase

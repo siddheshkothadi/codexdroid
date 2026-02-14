@@ -4,15 +4,16 @@ import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import me.siddheshkothadi.codexdroid.data.local.Connection
-import me.siddheshkothadi.codexdroid.data.local.ConnectionManager
+import me.siddheshkothadi.codexdroid.domain.model.Connection
+import me.siddheshkothadi.codexdroid.di.MainDispatcher
+import me.siddheshkothadi.codexdroid.domain.usecase.GetConnectionsUseCase
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -24,11 +25,12 @@ import javax.inject.Singleton
  */
 @Singleton
 class CodexAppLifecycle @Inject constructor(
-    connectionManager: ConnectionManager,
+    getConnectionsUseCase: GetConnectionsUseCase,
+    @MainDispatcher mainDispatcher: CoroutineDispatcher,
     private val clientManager: CodexClientManager,
 ) : DefaultLifecycleObserver {
     private val tag = "CodexAppLifecycle"
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val scope = CoroutineScope(SupervisorJob() + mainDispatcher)
 
     @Volatile private var activeConnection: Connection? = null
     private val _isForeground = MutableStateFlow(false)
@@ -37,7 +39,7 @@ class CodexAppLifecycle @Inject constructor(
     init {
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
         scope.launch {
-            connectionManager.connections.collectLatest { list ->
+            getConnectionsUseCase().collectLatest { list ->
                 activeConnection = list.firstOrNull()
             }
         }

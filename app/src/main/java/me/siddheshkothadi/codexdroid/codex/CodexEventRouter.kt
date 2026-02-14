@@ -6,8 +6,8 @@ import android.content.Intent
 import android.util.Log
 import androidx.core.app.TaskStackBuilder
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
@@ -21,8 +21,9 @@ import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import me.siddheshkothadi.codexdroid.MainActivity
-import me.siddheshkothadi.codexdroid.data.local.Connection
+import me.siddheshkothadi.codexdroid.domain.model.Connection
 import me.siddheshkothadi.codexdroid.data.repository.ThreadRepository
+import me.siddheshkothadi.codexdroid.di.IoDispatcher
 import me.siddheshkothadi.codexdroid.domain.usecase.GetConnectionsUseCase
 import me.siddheshkothadi.codexdroid.navigation.CodexDroidAppLinkKeys
 import me.siddheshkothadi.codexdroid.notifications.CodexDroidNotifications
@@ -46,13 +47,14 @@ import javax.inject.Singleton
 class CodexEventRouter @Inject constructor(
     getConnectionsUseCase: GetConnectionsUseCase,
     @ApplicationContext private val appContext: Context,
+    @IoDispatcher ioDispatcher: CoroutineDispatcher,
     private val clientManager: CodexClientManager,
     private val apiService: CodexApiService,
     private val threadRepository: ThreadRepository,
     private val codexAppLifecycle: CodexAppLifecycle,
 ) {
     private val tag = "CodexEventRouter"
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + ioDispatcher)
 
     private var activeConnection: Connection? = null
     private var job: Job? = null

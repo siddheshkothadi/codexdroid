@@ -3,15 +3,13 @@ package me.siddheshkothadi.codexdroid
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
+import me.siddheshkothadi.codexdroid.domain.usecase.EnsureConnectionStorageMigrationUseCase
 import me.siddheshkothadi.codexdroid.domain.usecase.GetConnectionsUseCase
 import me.siddheshkothadi.codexdroid.navigation.CodexDroidAppLink
 import me.siddheshkothadi.codexdroid.ui.navigation.Screen
@@ -19,7 +17,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
-    private val getConnectionsUseCase: GetConnectionsUseCase
+    private val ensureConnectionStorageMigrationUseCase: EnsureConnectionStorageMigrationUseCase,
+    private val getConnectionsUseCase: GetConnectionsUseCase,
 ) : ViewModel() {
 
     private val _isLoading = MutableStateFlow(true)
@@ -33,9 +32,8 @@ class MainViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            // We verify if there are any connections.
-            // We use .first() to get the current state from DataStore.
-            // DataStore usually emits immediately.
+            ensureConnectionStorageMigrationUseCase()
+            // Resolve initial navigation from the current persisted connections snapshot.
             val connections = getConnectionsUseCase().first()
             
             if (connections.isNotEmpty()) {

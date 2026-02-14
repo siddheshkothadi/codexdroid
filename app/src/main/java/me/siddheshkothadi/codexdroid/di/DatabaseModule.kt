@@ -9,6 +9,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import me.siddheshkothadi.codexdroid.data.local.ConnectionDao
 import me.siddheshkothadi.codexdroid.data.local.CodexDroidDatabase
 import me.siddheshkothadi.codexdroid.data.local.ThreadDao
 import javax.inject.Singleton
@@ -16,6 +17,12 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
+    private val MIGRATION_1_2 =
+        object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Keep a non-destructive path from legacy baseline versions.
+            }
+        }
 
     private val MIGRATION_2_3 =
         object : Migration(2, 3) {
@@ -58,6 +65,24 @@ object DatabaseModule {
             }
         }
 
+    private val MIGRATION_4_5 =
+        object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `connections` (
+                      `id` TEXT NOT NULL,
+                      `name` TEXT NOT NULL,
+                      `baseUrl` TEXT NOT NULL,
+                      `encryptedSecret` TEXT NOT NULL,
+                      `updatedAt` INTEGER NOT NULL,
+                      PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): CodexDroidDatabase {
@@ -66,13 +91,17 @@ object DatabaseModule {
             CodexDroidDatabase::class.java,
             "codexdroid_database"
         )
-        .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
-        .fallbackToDestructiveMigration()
-        .build()
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            .build()
     }
 
     @Provides
     fun provideThreadDao(database: CodexDroidDatabase): ThreadDao {
         return database.threadDao()
+    }
+
+    @Provides
+    fun provideConnectionDao(database: CodexDroidDatabase): ConnectionDao {
+        return database.connectionDao()
     }
 }

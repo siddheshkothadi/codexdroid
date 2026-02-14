@@ -2,6 +2,22 @@
 
 CodexDroid is an Android client for OpenAI Codex. It connects to the stream of events from `codex app-server` via WebSocket.
 
+## Features
+
+- Workspace-first session list with folder-level grouping (by `cwd`).
+- Session/thread management directly from the drawer:
+  - rename sessions/threads
+  - delete sessions/threads
+  - search sessions and folders
+- Multiple Codex connections support:
+  - save multiple servers
+  - switch active connection
+  - edit/delete connections
+- Text-to-speech for assistant responses:
+  - Sarvam AI TTS integration (Bulbul v3)
+  - configurable voice and speech controls in Settings
+  - Android TTS fallback when Sarvam is unavailable
+
 ## Architecture
 
 The app follows layered architecture with explicit dependency flow:

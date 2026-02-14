@@ -96,9 +96,10 @@ The app follows layered architecture with explicit dependency flow:
 ## Screenshots
 
 <p>
-  <img src="https://github.com/user-attachments/assets/34045392-e12f-4b01-b6b0-a0c3e2ecbcdf" alt="Setup" width="260" />
-  <img src="https://github.com/user-attachments/assets/e00e1626-c2f3-4b3e-a9dc-47cd5b29fdcf" alt="Drawer" width="260" />
-  <img src="https://github.com/user-attachments/assets/8e4dcf61-c170-4bd7-b56d-649a4cdd5ead" alt="Thread" width="260" />
+  <img src="https://github.com/user-attachments/assets/91d01f8d-a439-4cea-b41b-93d53304f1e1" alt="Setup" width="260" />
+  <img src="https://github.com/user-attachments/assets/4f2bffa8-775f-4880-8c68-939fac8156b6" alt="Thread" width="260" />
+  <img src="https://github.com/user-attachments/assets/ae8d7439-a9ec-457c-ad39-c859119955d7" alt="Thread" width="260" />
+  <img src="https://github.com/user-attachments/assets/45f552a7-78a2-40aa-9d3c-5c4fcb3feda5" alt="Drawer" width="260" />
 </p>
 
 

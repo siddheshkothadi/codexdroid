@@ -1,4 +1,4 @@
-package me.siddheshkothadi.codexdroid.ui.setup
+package me.siddheshkothadi.codexdroid.feature.setup.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -150,3 +150,4 @@ fun SetupScreen(
         }
     }
 }
+

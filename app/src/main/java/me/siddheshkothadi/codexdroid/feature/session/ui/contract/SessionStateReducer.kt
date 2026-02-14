@@ -1,6 +1,6 @@
-package me.siddheshkothadi.codexdroid.ui.session.contract
+package me.siddheshkothadi.codexdroid.feature.session.ui.contract
 
-import me.siddheshkothadi.codexdroid.ui.session.SessionUiState
+import me.siddheshkothadi.codexdroid.feature.session.ui.SessionUiState
 
 fun interface SessionStateReducer {
     fun reduce(state: SessionUiState, action: SessionAction): SessionUiState
@@ -16,3 +16,4 @@ object DefaultSessionStateReducer : SessionStateReducer {
         }
     }
 }
+

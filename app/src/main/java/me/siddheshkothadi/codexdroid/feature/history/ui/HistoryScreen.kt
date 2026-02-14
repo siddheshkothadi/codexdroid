@@ -1,4 +1,4 @@
-package me.siddheshkothadi.codexdroid.ui.history
+package me.siddheshkothadi.codexdroid.feature.history.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -14,7 +14,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
-import me.siddheshkothadi.codexdroid.ui.components.CodexDroidDrawerContent
+import me.siddheshkothadi.codexdroid.feature.shared.ui.components.CodexDroidDrawerContent
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -146,3 +146,4 @@ private fun HistorySkeleton() {
         }
     }
 }
+

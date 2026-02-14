@@ -1,4 +1,4 @@
-package me.siddheshkothadi.codexdroid.ui.session.contract
+package me.siddheshkothadi.codexdroid.feature.session.ui.contract
 
 sealed interface SessionEffect {
     data class ShowError(val message: String) : SessionEffect
@@ -7,3 +7,4 @@ sealed interface SessionEffect {
 
     data object RefreshThreads : SessionEffect
 }
+

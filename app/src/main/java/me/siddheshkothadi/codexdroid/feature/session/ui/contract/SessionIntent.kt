@@ -1,4 +1,4 @@
-package me.siddheshkothadi.codexdroid.ui.session.contract
+package me.siddheshkothadi.codexdroid.feature.session.ui.contract
 
 sealed interface SessionIntent {
     data class SendMessage(val text: String) : SessionIntent
@@ -9,3 +9,4 @@ sealed interface SessionIntent {
 
     data class StartNewSession(val cwd: String?) : SessionIntent
 }
+

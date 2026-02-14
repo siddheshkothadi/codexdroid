@@ -1,4 +1,4 @@
-package me.siddheshkothadi.codexdroid.ui.session
+package me.siddheshkothadi.codexdroid.feature.session.ui
 
 import android.content.Context
 import android.os.Bundle
@@ -184,3 +184,4 @@ fun rememberTurnTextToSpeechController(): TurnTextToSpeechController {
     }
     return controller
 }
+

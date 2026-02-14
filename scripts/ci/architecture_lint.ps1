@@ -45,7 +45,8 @@ function Assert-NoMatches {
 }
 
 $uiTargets = @(
-    "app/src/main/java/me/siddheshkothadi/codexdroid/ui",
+    "app/src/main/java/me/siddheshkothadi/codexdroid/feature",
+    "app/src/main/java/me/siddheshkothadi/codexdroid/ui/navigation",
     "app/src/main/java/me/siddheshkothadi/codexdroid/MainViewModel.kt"
 )
 
@@ -65,7 +66,7 @@ Assert-NoMatches `
 
 Assert-NoMatches `
     -Label "Domain layer importing UI layer types" `
-    -Pattern "import\\s+me\\.siddheshkothadi\\.codexdroid\\.ui\\." `
+    -Pattern "import\\s+me\\.siddheshkothadi\\.codexdroid\\.(ui|feature\\..*\\.ui)\\." `
     -Targets $domainTargets
 
 Write-Host "[architecture-lint] Passed"

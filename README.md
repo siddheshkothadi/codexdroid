@@ -13,7 +13,11 @@ The app follows layered architecture with explicit dependency flow:
 
 ### Directory map
 
-- `app/src/main/java/me/siddheshkothadi/codexdroid/ui/`
+- `app/src/main/java/me/siddheshkothadi/codexdroid/feature/session/ui/`
+- `app/src/main/java/me/siddheshkothadi/codexdroid/feature/history/ui/`
+- `app/src/main/java/me/siddheshkothadi/codexdroid/feature/setup/ui/`
+- `app/src/main/java/me/siddheshkothadi/codexdroid/feature/shared/ui/components/`
+- `app/src/main/java/me/siddheshkothadi/codexdroid/ui/navigation/`
 - `app/src/main/java/me/siddheshkothadi/codexdroid/domain/`
 - `app/src/main/java/me/siddheshkothadi/codexdroid/data/`
 - `app/src/main/java/me/siddheshkothadi/codexdroid/codex/` (transport/runtime wiring)

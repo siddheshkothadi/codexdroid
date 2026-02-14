@@ -1,4 +1,4 @@
-package me.siddheshkothadi.codexdroid.ui.setup
+package me.siddheshkothadi.codexdroid.feature.setup.ui
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -59,3 +59,4 @@ sealed interface SetupUiState {
     object Success : SetupUiState
     data class Error(val message: String) : SetupUiState
 }
+

@@ -1,4 +1,4 @@
-package me.siddheshkothadi.codexdroid.ui.history
+package me.siddheshkothadi.codexdroid.feature.history.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -125,3 +125,4 @@ sealed interface HistoryUiState {
     object Empty : HistoryUiState
     data class Success(val threads: List<Thread>) : HistoryUiState
 }
+

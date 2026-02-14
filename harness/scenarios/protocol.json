@@ -118,7 +118,7 @@
     {
       "id": "protocol.source_has_model_config_fallback_logic",
       "kind": "contains_text",
-      "file": "app/src/main/java/me/siddheshkothadi/codexdroid/ui/session/SessionViewModel.kt",
+      "file": "app/src/main/java/me/siddheshkothadi/codexdroid/feature/session/ui/SessionViewModel.kt",
       "fragments": [
         "readConfig",
         "parseConfigPreferences",
@@ -128,7 +128,7 @@
     {
       "id": "protocol.source_has_effort_fallback_logic",
       "kind": "contains_text",
-      "file": "app/src/main/java/me/siddheshkothadi/codexdroid/ui/session/SessionViewModel.kt",
+      "file": "app/src/main/java/me/siddheshkothadi/codexdroid/feature/session/ui/SessionViewModel.kt",
       "fragments": [
         "threadPreferredEffort",
         "defaultReasoningEffort",

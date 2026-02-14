@@ -5,16 +5,20 @@ This file is the agent-facing map of the repository, aligned with harness-first 
 ## Project map
 
 1. Android app code: `app/src/main/java/me/siddheshkothadi/codexdroid/`
-2. Session UI + orchestration: `app/src/main/java/me/siddheshkothadi/codexdroid/ui/session/`
-3. Codex protocol + routing: `app/src/main/java/me/siddheshkothadi/codexdroid/codex/`
-4. Data layer (Room/repositories): `app/src/main/java/me/siddheshkothadi/codexdroid/data/`
-5. Domain layer (models/use cases): `app/src/main/java/me/siddheshkothadi/codexdroid/domain/`
-6. Dependency injection: `app/src/main/java/me/siddheshkothadi/codexdroid/di/`
+2. Session feature UI + orchestration: `app/src/main/java/me/siddheshkothadi/codexdroid/feature/session/ui/`
+3. History feature UI: `app/src/main/java/me/siddheshkothadi/codexdroid/feature/history/ui/`
+4. Setup feature UI: `app/src/main/java/me/siddheshkothadi/codexdroid/feature/setup/ui/`
+5. Shared UI components: `app/src/main/java/me/siddheshkothadi/codexdroid/feature/shared/ui/components/`
+6. Navigation graph: `app/src/main/java/me/siddheshkothadi/codexdroid/ui/navigation/`
+7. Codex protocol + routing: `app/src/main/java/me/siddheshkothadi/codexdroid/codex/`
+8. Data layer (Room/repositories): `app/src/main/java/me/siddheshkothadi/codexdroid/data/`
+9. Domain layer (models/use cases): `app/src/main/java/me/siddheshkothadi/codexdroid/domain/`
+10. Dependency injection: `app/src/main/java/me/siddheshkothadi/codexdroid/di/`
 
 ## Architecture rules
 
 1. Layering is strict: `UI -> Domain -> Data`.
-2. UI (`ui/*` + `MainViewModel`) must not import `data/*` or `CodexApiService` directly.
+2. UI (`feature/*/ui/*`, `ui/navigation/*`, and `MainViewModel`) must not import `data/*` or `CodexApiService` directly.
 3. UI talks to domain via use cases.
 4. Room is source of truth for `connections` and `threads`.
 5. DataStore is only for lightweight app preference/migration state.

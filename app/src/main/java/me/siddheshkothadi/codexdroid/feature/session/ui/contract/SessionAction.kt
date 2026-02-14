@@ -1,4 +1,4 @@
-package me.siddheshkothadi.codexdroid.ui.session.contract
+package me.siddheshkothadi.codexdroid.feature.session.ui.contract
 
 sealed interface SessionAction {
     data class SetSending(val sending: Boolean) : SessionAction
@@ -9,3 +9,4 @@ sealed interface SessionAction {
 
     data class SetPendingMessage(val text: String?) : SessionAction
 }
+

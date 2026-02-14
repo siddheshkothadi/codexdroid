@@ -1,4 +1,4 @@
-package me.siddheshkothadi.codexdroid.ui.components
+package me.siddheshkothadi.codexdroid.feature.shared.ui.components
 
 import android.content.ClipData
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -38,7 +38,7 @@ import me.siddheshkothadi.codexdroid.codex.Thread
 import me.siddheshkothadi.codexdroid.codex.ConnectionStatus
 import me.siddheshkothadi.codexdroid.codex.TurnStatus
 import me.siddheshkothadi.codexdroid.domain.model.Connection
-import me.siddheshkothadi.codexdroid.ui.history.HistoryUiState
+import me.siddheshkothadi.codexdroid.feature.history.ui.HistoryUiState
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -507,3 +507,4 @@ private fun DrawerSearchField(
             )
     )
 }
+

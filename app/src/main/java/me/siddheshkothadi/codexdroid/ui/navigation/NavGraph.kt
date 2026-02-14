@@ -13,11 +13,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
-import me.siddheshkothadi.codexdroid.ui.session.SessionScreen
-import me.siddheshkothadi.codexdroid.ui.session.SessionViewModel
-import me.siddheshkothadi.codexdroid.ui.setup.SetupScreen
-import me.siddheshkothadi.codexdroid.ui.setup.SetupUiState
-import me.siddheshkothadi.codexdroid.ui.setup.SetupViewModel
+import me.siddheshkothadi.codexdroid.feature.session.ui.SessionScreen
+import me.siddheshkothadi.codexdroid.feature.session.ui.SessionViewModel
+import me.siddheshkothadi.codexdroid.feature.setup.ui.SetupScreen
+import me.siddheshkothadi.codexdroid.feature.setup.ui.SetupUiState
+import me.siddheshkothadi.codexdroid.feature.setup.ui.SetupViewModel
 import me.siddheshkothadi.codexdroid.navigation.CodexDroidAppLink
 
 sealed class Screen(val route: String) {
@@ -159,3 +159,4 @@ fun NavGraph(
         }
     }
 }
+

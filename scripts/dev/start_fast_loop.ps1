@@ -19,6 +19,9 @@ if ($IncludeProtocol) {
 Write-Host "[fast-loop] Linting harness docs"
 & "$PSScriptRoot/../ci/docs_lint.ps1"
 
+Write-Host "[fast-loop] Linting architecture boundaries"
+& "$PSScriptRoot/../ci/architecture_lint.ps1"
+
 if (-not $SkipBuild) {
     Write-Host "[fast-loop] Building debug APK"
     ./gradlew assembleDebug

@@ -40,6 +40,7 @@ else {
 }
 
 Run-Step -Label "Harness docs lint" -Action { & "$PSScriptRoot/../ci/docs_lint.ps1" }
+Run-Step -Label "Architecture lint" -Action { & "$PSScriptRoot/../ci/architecture_lint.ps1" }
 
 if (-not $SkipBuild) {
     Run-Step -Label "Assemble debug APK" -Action { ./gradlew assembleDebug }

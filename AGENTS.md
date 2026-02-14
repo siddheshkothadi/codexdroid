@@ -8,7 +8,25 @@ This file is the agent-facing map of the repository, aligned with harness-first 
 2. Session UI + orchestration: `app/src/main/java/me/siddheshkothadi/codexdroid/ui/session/`
 3. Codex protocol + routing: `app/src/main/java/me/siddheshkothadi/codexdroid/codex/`
 4. Data layer (Room/repositories): `app/src/main/java/me/siddheshkothadi/codexdroid/data/`
-5. Dependency injection: `app/src/main/java/me/siddheshkothadi/codexdroid/di/`
+5. Domain layer (models/use cases): `app/src/main/java/me/siddheshkothadi/codexdroid/domain/`
+6. Dependency injection: `app/src/main/java/me/siddheshkothadi/codexdroid/di/`
+
+## Architecture rules
+
+1. Layering is strict: `UI -> Domain -> Data`.
+2. UI (`ui/*` + `MainViewModel`) must not import `data/*` or `CodexApiService` directly.
+3. UI talks to domain via use cases.
+4. Room is source of truth for `connections` and `threads`.
+5. DataStore is only for lightweight app preference/migration state.
+6. Compose state collection should use lifecycle-aware APIs (`collectAsStateWithLifecycle`).
+7. Coroutines dispatchers are provided through DI qualifiers in `di/CoroutineModule.kt`.
+
+## Architecture guardrails
+
+1. Architecture lint script: `scripts/ci/architecture_lint.ps1`
+2. Local guard script includes architecture lint: `scripts/dev/push_main_guard.ps1`
+3. Fast loop includes architecture lint: `scripts/dev/start_fast_loop.ps1`
+4. CI workflows run architecture lint before harness evaluations.
 
 ## Harness map
 
@@ -32,7 +50,8 @@ This file is the agent-facing map of the repository, aligned with harness-first 
 1. `./gradlew testDebugUnitTest`
 2. `python harness/runners/cli.py eval --suite smoke`
 3. `scripts/ci/docs_lint.ps1`
-4. `./gradlew assembleDebug`
+4. `scripts/ci/architecture_lint.ps1`
+5. `./gradlew assembleDebug`
 
 Use `scripts/dev/start_fast_loop.ps1` to run the same sequence.
 Use `scripts/dev/push_main_guard.ps1` before direct pushes to `main`.

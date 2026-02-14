@@ -2,6 +2,39 @@
 
 CodexDroid is an Android client for OpenAI Codex. It connects to the stream of events from `codex app-server` via WebSocket.
 
+## Architecture
+
+The app follows layered architecture with explicit dependency flow:
+
+- `UI -> Domain -> Data`
+- UI (`ViewModel` + Compose screens) depends only on domain use cases and UI models.
+- Domain exposes use cases and models.
+- Data owns persistence/network implementations and repository internals.
+
+### Directory map
+
+- `app/src/main/java/me/siddheshkothadi/codexdroid/ui/`
+- `app/src/main/java/me/siddheshkothadi/codexdroid/domain/`
+- `app/src/main/java/me/siddheshkothadi/codexdroid/data/`
+- `app/src/main/java/me/siddheshkothadi/codexdroid/codex/` (transport/runtime wiring)
+- `app/src/main/java/me/siddheshkothadi/codexdroid/di/`
+
+### Data strategy
+
+- Room is the source of truth for structured app data:
+  - `connections`
+  - `threads`
+- DataStore is now limited to lightweight preference/state use:
+  - legacy connection import marker
+  - migration bridge data (one-time import path)
+- Legacy DataStore connections are migrated to Room at app startup.
+
+### State and lifecycle
+
+- Screen state is exposed as `StateFlow` from `ViewModel`.
+- Compose uses lifecycle-aware collection via `collectAsStateWithLifecycle()`.
+- Network/database operations run through domain use cases from `ViewModel`.
+
 ## Run
 
 - Set the value of `CODEX_HTTP_SECRET` environment variable
@@ -15,6 +48,7 @@ CodexDroid is an Android client for OpenAI Codex. It connects to the stream of e
 - Run smoke harness directly: `python harness/runners/cli.py eval --suite smoke --enforce-thresholds`
 - Run protocol harness directly: `python harness/runners/cli.py eval --suite protocol --enforce-thresholds`
 - Install pre-push hook (optional): `scripts/dev/install_githooks.ps1`
+- Run architecture boundary checks directly: `scripts/ci/architecture_lint.ps1`
 
 ## Harness
 

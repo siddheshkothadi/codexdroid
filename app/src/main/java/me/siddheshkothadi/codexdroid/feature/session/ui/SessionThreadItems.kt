@@ -1,11 +1,16 @@
 package me.siddheshkothadi.codexdroid.feature.session.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -16,8 +21,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -26,6 +34,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.halilibo.richtext.commonmark.CommonMarkdownParseOptions
 import com.halilibo.richtext.commonmark.Markdown
+import com.halilibo.richtext.markdown.AstBlockNodeComposer
+import com.halilibo.richtext.markdown.node.AstBlockNodeType
+import com.halilibo.richtext.markdown.node.AstFencedCodeBlock
+import com.halilibo.richtext.markdown.node.AstIndentedCodeBlock
+import com.halilibo.richtext.markdown.node.AstNode
 import com.halilibo.richtext.ui.BlockQuoteGutter
 import com.halilibo.richtext.ui.CodeBlockStyle
 import com.halilibo.richtext.ui.ListStyle
@@ -502,6 +515,298 @@ private fun CodexMarkdown(markdown: String, modifier: Modifier = Modifier) {
         Markdown(
             content = markdown,
             markdownParseOptions = CommonMarkdownParseOptions.Default.copy(autolink = true),
+            astBlockNodeComposer = rememberCodexAstBlockNodeComposer(),
+        )
+    }
+}
+
+@Composable
+private fun rememberCodexAstBlockNodeComposer(): AstBlockNodeComposer {
+    return remember {
+        object : AstBlockNodeComposer {
+            override fun predicate(astBlockNodeType: AstBlockNodeType): Boolean {
+                return astBlockNodeType is AstFencedCodeBlock || astBlockNodeType is AstIndentedCodeBlock
+            }
+
+            @Composable
+            override fun com.halilibo.richtext.ui.RichTextScope.Compose(
+                astNode: AstNode,
+                visitChildren: @Composable (AstNode) -> Unit
+            ) {
+                when (val nodeType = astNode.type) {
+                    is AstFencedCodeBlock ->
+                        MarkdownCodeBlock(
+                            code = nodeType.literal,
+                            language = parseFenceLanguage(nodeType.info),
+                        )
+                    is AstIndentedCodeBlock ->
+                        MarkdownCodeBlock(
+                            code = nodeType.literal,
+                            language = null,
+                        )
+                    else -> visitChildren(astNode)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MarkdownCodeBlock(code: String, language: String?) {
+    val colors = CodexTheme.colors
+    val context = LocalContext.current
+    val normalizedCode = remember(code) { code.trimEnd('\n', '\r') }
+    var wrapLines by rememberSaveable(normalizedCode, language) { mutableStateOf(false) }
+    val horizontalScroll = rememberScrollState()
+    val highlightedCode = remember(normalizedCode, language, colors) {
+        buildHighlightedCode(
+            code = normalizedCode,
+            language = language,
+            colors = colors,
+        )
+    }
+    val textStyle =
+        MaterialTheme.typography.bodySmall.copy(
+            fontFamily = FontFamily.Monospace,
+            color = colors.textPrimary
+        )
+
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(colors.bgPrimary)
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(colors.bgSecondary)
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            language?.let { lang ->
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = colors.bgPrimary,
+                    contentColor = colors.textSecondary
+                ) {
+                    Text(
+                        text = lang,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.weight(1f))
+            TextButton(onClick = { wrapLines = !wrapLines }) {
+                Text(if (wrapLines) "No wrap" else "Wrap", style = MaterialTheme.typography.labelSmall)
+            }
+            IconButton(onClick = { copyToClipboard(context, normalizedCode) }) {
+                Icon(
+                    imageVector = Icons.Default.ContentCopy,
+                    contentDescription = "Copy code block",
+                    tint = colors.textSecondary
+                )
+            }
+        }
+
+        Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp)) {
+            SelectionContainer {
+                Text(
+                    text = highlightedCode,
+                    modifier =
+                        if (wrapLines) {
+                            Modifier.fillMaxWidth()
+                        } else {
+                            Modifier.fillMaxWidth().horizontalScroll(horizontalScroll)
+                        },
+                    style = textStyle,
+                    softWrap = wrapLines
+                )
+            }
+        }
+    }
+}
+
+private fun parseFenceLanguage(info: String): String? {
+    val raw =
+        info
+            .trim()
+            .lineSequence()
+            .firstOrNull()
+            .orEmpty()
+            .trim()
+    if (raw.isBlank()) return null
+    return raw.split(Regex("\\s+")).firstOrNull()?.takeIf { it.isNotBlank() }?.lowercase()
+}
+
+private fun copyToClipboard(context: Context, text: String) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+    clipboard.setPrimaryClip(ClipData.newPlainText("code-block", text))
+}
+
+private fun buildHighlightedCode(
+    code: String,
+    language: String?,
+    colors: me.siddheshkothadi.codexdroid.ui.theme.CodexColors,
+): AnnotatedString {
+    val normalizedLanguage = normalizeLanguage(language)
+    val styleKeyword = SpanStyle(color = colors.accentPrimary, fontWeight = FontWeight.SemiBold)
+    val styleString = SpanStyle(color = colors.accentSuccess)
+    val styleNumber = SpanStyle(color = colors.accentWarning)
+    val styleComment = SpanStyle(color = colors.textTertiary)
+    val styleType = SpanStyle(color = colors.accentInfo)
+    val stylePunctuation = SpanStyle(color = colors.textSecondary)
+    val keywords = languageKeywords(normalizedLanguage)
+
+    return buildAnnotatedString {
+        var i = 0
+        var inBlockComment = false
+        while (i < code.length) {
+            if (inBlockComment) {
+                val end = code.indexOf("*/", startIndex = i)
+                val to = if (end == -1) code.length else end + 2
+                append(code.substring(i, to))
+                addStyle(styleComment, i, to)
+                i = to
+                inBlockComment = end == -1
+                continue
+            }
+
+            val current = code[i]
+            val next = code.getOrNull(i + 1)
+
+            if (isLineCommentStart(normalizedLanguage, current, next)) {
+                val end = code.indexOf('\n', startIndex = i).let { if (it == -1) code.length else it }
+                append(code.substring(i, end))
+                addStyle(styleComment, i, end)
+                i = end
+                continue
+            }
+
+            if (current == '/' && next == '*') {
+                val end = code.indexOf("*/", startIndex = i + 2)
+                val to = if (end == -1) code.length else end + 2
+                append(code.substring(i, to))
+                addStyle(styleComment, i, to)
+                i = to
+                inBlockComment = end == -1
+                continue
+            }
+
+            if (current == '"' || current == '\'' || (current == '`' && supportsBacktickStrings(normalizedLanguage))) {
+                val quote = current
+                var j = i + 1
+                var escaped = false
+                while (j < code.length) {
+                    val c = code[j]
+                    if (escaped) {
+                        escaped = false
+                    } else if (c == '\\') {
+                        escaped = true
+                    } else if (c == quote) {
+                        j += 1
+                        break
+                    }
+                    j += 1
+                }
+                val end = j.coerceAtMost(code.length)
+                append(code.substring(i, end))
+                addStyle(styleString, i, end)
+                i = end
+                continue
+            }
+
+            if (current.isDigit()) {
+                var j = i + 1
+                while (j < code.length && (code[j].isDigit() || code[j] == '.' || code[j] == '_')) j++
+                append(code.substring(i, j))
+                addStyle(styleNumber, i, j)
+                i = j
+                continue
+            }
+
+            if (current.isLetter() || current == '_') {
+                var j = i + 1
+                while (j < code.length && (code[j].isLetterOrDigit() || code[j] == '_')) j++
+                val token = code.substring(i, j)
+                append(token)
+                when {
+                    token in keywords -> addStyle(styleKeyword, i, j)
+                    token.firstOrNull()?.isUpperCase() == true -> addStyle(styleType, i, j)
+                }
+                i = j
+                continue
+            }
+
+            append(current)
+            if (current in setOf('{', '}', '(', ')', '[', ']', ';', ',', ':')) {
+                addStyle(stylePunctuation, i, i + 1)
+            }
+            i += 1
+        }
+    }
+}
+
+private fun normalizeLanguage(language: String?): String {
+    return when (language?.lowercase()) {
+        "kts" -> "kotlin"
+        "kt" -> "kotlin"
+        "js" -> "javascript"
+        "ts" -> "typescript"
+        "py" -> "python"
+        "sh", "bash", "zsh" -> "shell"
+        "yml" -> "yaml"
+        else -> language?.lowercase().orEmpty()
+    }
+}
+
+private fun supportsBacktickStrings(language: String): Boolean {
+    return language == "javascript" || language == "typescript" || language == "kotlin"
+}
+
+private fun isLineCommentStart(language: String, current: Char, next: Char?): Boolean {
+    return when {
+        current == '/' && next == '/' -> true
+        current == '#' && (language == "python" || language == "shell" || language == "yaml") -> true
+        else -> false
+    }
+}
+
+private fun languageKeywords(language: String): Set<String> {
+    return when (language) {
+        "kotlin" -> setOf(
+            "package", "import", "class", "interface", "object", "fun", "val", "var", "if", "else",
+            "when", "for", "while", "do", "return", "try", "catch", "finally", "throw", "null",
+            "true", "false", "is", "in", "as", "this", "super", "override", "private", "public",
+            "internal", "protected", "suspend", "data", "sealed", "enum", "companion"
+        )
+        "typescript", "javascript" -> setOf(
+            "function", "const", "let", "var", "if", "else", "switch", "case", "for", "while",
+            "do", "return", "try", "catch", "finally", "throw", "class", "extends", "implements",
+            "new", "import", "export", "from", "as", "true", "false", "null", "undefined", "async",
+            "await", "type", "interface"
+        )
+        "python" -> setOf(
+            "def", "class", "if", "elif", "else", "for", "while", "return", "try", "except", "finally",
+            "raise", "import", "from", "as", "with", "lambda", "True", "False", "None", "pass", "break",
+            "continue", "yield", "async", "await"
+        )
+        "shell" -> setOf(
+            "if", "then", "else", "fi", "for", "in", "do", "done", "case", "esac", "while", "function",
+            "return", "local", "export"
+        )
+        "java" -> setOf(
+            "package", "import", "class", "interface", "enum", "public", "private", "protected", "static",
+            "final", "void", "new", "if", "else", "switch", "case", "for", "while", "return", "try",
+            "catch", "finally", "throw", "true", "false", "null"
+        )
+        "json" -> setOf("true", "false", "null")
+        else -> setOf(
+            "if", "else", "for", "while", "return", "class", "function", "const", "let", "var", "true",
+            "false", "null"
         )
     }
 }

@@ -44,8 +44,6 @@ import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.halilibo.richtext.commonmark.Markdown
-import com.halilibo.richtext.ui.material3.RichText
 import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch

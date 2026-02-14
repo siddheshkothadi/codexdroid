@@ -84,8 +84,9 @@ dependencies {
     implementation(libs.tink.android)
     implementation(libs.androidx.datastore.preferences)
 
-    implementation("com.halilibo.compose-richtext:richtext-ui-material3:1.0.0-alpha02")
-    implementation("com.halilibo.compose-richtext:richtext-commonmark:1.0.0-alpha02")
+    implementation("com.mikepenz:multiplatform-markdown-renderer-android:0.27.0-rc02")
+    implementation("com.mikepenz:multiplatform-markdown-renderer-m3:0.27.0-rc02")
+    implementation("com.mikepenz:multiplatform-markdown-renderer-code:0.27.0-rc02")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

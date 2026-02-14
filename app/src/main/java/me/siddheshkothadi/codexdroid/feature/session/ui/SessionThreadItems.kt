@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -23,29 +24,25 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.halilibo.richtext.commonmark.CommonMarkdownParseOptions
-import com.halilibo.richtext.commonmark.Markdown
-import com.halilibo.richtext.markdown.AstBlockNodeComposer
-import com.halilibo.richtext.markdown.node.AstBlockNodeType
-import com.halilibo.richtext.markdown.node.AstFencedCodeBlock
-import com.halilibo.richtext.markdown.node.AstIndentedCodeBlock
-import com.halilibo.richtext.markdown.node.AstNode
-import com.halilibo.richtext.ui.BlockQuoteGutter
-import com.halilibo.richtext.ui.CodeBlockStyle
-import com.halilibo.richtext.ui.ListStyle
-import com.halilibo.richtext.ui.material3.RichText
-import com.halilibo.richtext.ui.RichTextStyle
-import com.halilibo.richtext.ui.TableStyle
-import com.halilibo.richtext.ui.string.RichTextStringStyle
+import com.mikepenz.markdown.compose.components.MarkdownComponents
+import com.mikepenz.markdown.compose.components.markdownComponents
+import com.mikepenz.markdown.compose.elements.MarkdownCodeBlock
+import com.mikepenz.markdown.compose.elements.MarkdownCodeFence
+import com.mikepenz.markdown.m3.Markdown
+import com.mikepenz.markdown.m3.markdownColor
+import com.mikepenz.markdown.m3.markdownTypography
+import com.mikepenz.markdown.model.markdownPadding
+import dev.snipme.highlights.Highlights
+import dev.snipme.highlights.model.BoldHighlight
+import dev.snipme.highlights.model.ColorHighlight
+import dev.snipme.highlights.model.SyntaxLanguage
 import me.siddheshkothadi.codexdroid.codex.*
 import me.siddheshkothadi.codexdroid.ui.theme.CodexTheme
 @Composable
@@ -508,61 +505,89 @@ private fun InfoItem(id: String, title: String, body: String) {
 
 @Composable
 private fun CodexMarkdown(markdown: String, modifier: Modifier = Modifier) {
-    RichText(
-        modifier = modifier,
-        style = rememberCodexMarkdownStyle(),
-    ) {
-        Markdown(
-            content = markdown,
-            markdownParseOptions = CommonMarkdownParseOptions.Default.copy(autolink = true),
-            astBlockNodeComposer = rememberCodexAstBlockNodeComposer(),
-        )
-    }
-}
-
-@Composable
-private fun rememberCodexAstBlockNodeComposer(): AstBlockNodeComposer {
-    return remember {
-        object : AstBlockNodeComposer {
-            override fun predicate(astBlockNodeType: AstBlockNodeType): Boolean {
-                return astBlockNodeType is AstFencedCodeBlock || astBlockNodeType is AstIndentedCodeBlock
-            }
-
-            @Composable
-            override fun com.halilibo.richtext.ui.RichTextScope.Compose(
-                astNode: AstNode,
-                visitChildren: @Composable (AstNode) -> Unit
-            ) {
-                when (val nodeType = astNode.type) {
-                    is AstFencedCodeBlock ->
-                        MarkdownCodeBlock(
-                            code = nodeType.literal,
-                            language = parseFenceLanguage(nodeType.info),
-                        )
-                    is AstIndentedCodeBlock ->
-                        MarkdownCodeBlock(
-                            code = nodeType.literal,
-                            language = null,
-                        )
-                    else -> visitChildren(astNode)
-                }
-            }
+    val colors = CodexTheme.colors
+    val typography = MaterialTheme.typography
+    val baseTextStyle = LocalTextStyle.current.copy(color = colors.textPrimary)
+    val highlightsBuilder =
+        remember(isSystemInDarkTheme()) {
+            Highlights.Builder()
         }
-    }
+    val markdownComponents =
+        remember(highlightsBuilder) {
+            codexMarkdownComponents(highlightsBuilder)
+        }
+
+    Markdown(
+        content = markdown,
+        modifier = modifier,
+        colors =
+            markdownColor(
+                text = colors.textPrimary,
+                codeText = colors.textPrimary,
+                inlineCodeText = colors.textPrimary,
+                linkText = colors.accentPrimary,
+                codeBackground = Color.Transparent,
+                inlineCodeBackground = Color.Transparent,
+                dividerColor = colors.borderDefault,
+            ),
+        typography =
+            markdownTypography(
+                h1 = typography.titleLarge.copy(fontWeight = FontWeight.SemiBold, color = colors.textPrimary),
+                h2 = typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, color = colors.textPrimary),
+                h3 = typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, color = colors.textPrimary),
+                h4 = typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold, color = colors.textPrimary),
+                text = baseTextStyle,
+                paragraph = baseTextStyle,
+                ordered = baseTextStyle,
+                bullet = baseTextStyle,
+                list = baseTextStyle,
+                quote = baseTextStyle.copy(color = colors.textSecondary),
+                code = typography.bodySmall.copy(fontFamily = FontFamily.Monospace, color = colors.textPrimary),
+                inlineCode =
+                    baseTextStyle.copy(
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Medium,
+                    ),
+                link =
+                    baseTextStyle.copy(
+                        color = colors.accentPrimary,
+                        textDecoration = TextDecoration.Underline,
+                        fontWeight = FontWeight.Medium,
+                    ),
+            ),
+        padding = markdownPadding(codeBlock = PaddingValues(0.dp)),
+        components = markdownComponents,
+    )
+}
+
+private fun codexMarkdownComponents(highlightsBuilder: Highlights.Builder): MarkdownComponents {
+    return markdownComponents(
+        codeFence = {
+            MarkdownCodeFence(it.content, it.node) { code, language ->
+                CodexCodeBlock(code = code, language = language, highlightsBuilder = highlightsBuilder)
+            }
+        },
+        codeBlock = {
+            MarkdownCodeBlock(it.content, it.node) { code, language ->
+                CodexCodeBlock(code = code, language = language, highlightsBuilder = highlightsBuilder)
+            }
+        },
+    )
 }
 
 @Composable
-private fun MarkdownCodeBlock(code: String, language: String?) {
+private fun CodexCodeBlock(code: String, language: String?, highlightsBuilder: Highlights.Builder) {
     val colors = CodexTheme.colors
     val context = LocalContext.current
     val normalizedCode = remember(code) { code.trimEnd('\n', '\r') }
-    var wrapLines by rememberSaveable(normalizedCode, language) { mutableStateOf(false) }
+    val normalizedLanguage = remember(language) { normalizeFenceLanguage(language) }
+    var wrapLines by rememberSaveable(normalizedCode, normalizedLanguage) { mutableStateOf(false) }
     val horizontalScroll = rememberScrollState()
-    val highlightedCode = remember(normalizedCode, language, colors) {
+    val highlightedCode = remember(normalizedCode, normalizedLanguage, highlightsBuilder) {
         buildHighlightedCode(
             code = normalizedCode,
-            language = language,
-            colors = colors,
+            language = normalizedLanguage,
+            highlightsBuilder = highlightsBuilder,
         )
     }
     val textStyle =
@@ -586,7 +611,7 @@ private fun MarkdownCodeBlock(code: String, language: String?) {
                     .padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            language?.let { lang ->
+            normalizedLanguage?.let { lang ->
                 Surface(
                     shape = RoundedCornerShape(999.dp),
                     color = colors.bgPrimary,
@@ -630,18 +655,6 @@ private fun MarkdownCodeBlock(code: String, language: String?) {
     }
 }
 
-private fun parseFenceLanguage(info: String): String? {
-    val raw =
-        info
-            .trim()
-            .lineSequence()
-            .firstOrNull()
-            .orEmpty()
-            .trim()
-    if (raw.isBlank()) return null
-    return raw.split(Regex("\\s+")).firstOrNull()?.takeIf { it.isNotBlank() }?.lowercase()
-}
-
 private fun copyToClipboard(context: Context, text: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
     clipboard.setPrimaryClip(ClipData.newPlainText("code-block", text))
@@ -650,107 +663,43 @@ private fun copyToClipboard(context: Context, text: String) {
 private fun buildHighlightedCode(
     code: String,
     language: String?,
-    colors: me.siddheshkothadi.codexdroid.ui.theme.CodexColors,
+    highlightsBuilder: Highlights.Builder,
 ): AnnotatedString {
-    val normalizedLanguage = normalizeLanguage(language)
-    val styleKeyword = SpanStyle(color = colors.accentPrimary, fontWeight = FontWeight.SemiBold)
-    val styleString = SpanStyle(color = colors.accentSuccess)
-    val styleNumber = SpanStyle(color = colors.accentWarning)
-    val styleComment = SpanStyle(color = colors.textTertiary)
-    val styleType = SpanStyle(color = colors.accentInfo)
-    val stylePunctuation = SpanStyle(color = colors.textSecondary)
-    val keywords = languageKeywords(normalizedLanguage)
+    val syntaxLanguage = language?.let { runCatching { SyntaxLanguage.getByName(it) }.getOrNull() }
+    val highlightResult =
+        runCatching {
+            highlightsBuilder
+                .code(code)
+                .let { builder -> if (syntaxLanguage != null) builder.language(syntaxLanguage) else builder }
+                .build()
+        }.getOrNull() ?: return AnnotatedString(code)
 
     return buildAnnotatedString {
-        var i = 0
-        var inBlockComment = false
-        while (i < code.length) {
-            if (inBlockComment) {
-                val end = code.indexOf("*/", startIndex = i)
-                val to = if (end == -1) code.length else end + 2
-                append(code.substring(i, to))
-                addStyle(styleComment, i, to)
-                i = to
-                inBlockComment = end == -1
-                continue
-            }
-
-            val current = code[i]
-            val next = code.getOrNull(i + 1)
-
-            if (isLineCommentStart(normalizedLanguage, current, next)) {
-                val end = code.indexOf('\n', startIndex = i).let { if (it == -1) code.length else it }
-                append(code.substring(i, end))
-                addStyle(styleComment, i, end)
-                i = end
-                continue
-            }
-
-            if (current == '/' && next == '*') {
-                val end = code.indexOf("*/", startIndex = i + 2)
-                val to = if (end == -1) code.length else end + 2
-                append(code.substring(i, to))
-                addStyle(styleComment, i, to)
-                i = to
-                inBlockComment = end == -1
-                continue
-            }
-
-            if (current == '"' || current == '\'' || (current == '`' && supportsBacktickStrings(normalizedLanguage))) {
-                val quote = current
-                var j = i + 1
-                var escaped = false
-                while (j < code.length) {
-                    val c = code[j]
-                    if (escaped) {
-                        escaped = false
-                    } else if (c == '\\') {
-                        escaped = true
-                    } else if (c == quote) {
-                        j += 1
-                        break
-                    }
-                    j += 1
+        append(highlightResult.getCode())
+        highlightResult.getHighlights()
+            .filterIsInstance<ColorHighlight>()
+            .forEach { token ->
+                val start = token.location.start
+                val end = token.location.end
+                if (start in 0..length && end in 0..length && start < end) {
+                    addStyle(SpanStyle(color = Color(token.rgb).copy(alpha = 1f)), start = start, end = end)
                 }
-                val end = j.coerceAtMost(code.length)
-                append(code.substring(i, end))
-                addStyle(styleString, i, end)
-                i = end
-                continue
             }
-
-            if (current.isDigit()) {
-                var j = i + 1
-                while (j < code.length && (code[j].isDigit() || code[j] == '.' || code[j] == '_')) j++
-                append(code.substring(i, j))
-                addStyle(styleNumber, i, j)
-                i = j
-                continue
-            }
-
-            if (current.isLetter() || current == '_') {
-                var j = i + 1
-                while (j < code.length && (code[j].isLetterOrDigit() || code[j] == '_')) j++
-                val token = code.substring(i, j)
-                append(token)
-                when {
-                    token in keywords -> addStyle(styleKeyword, i, j)
-                    token.firstOrNull()?.isUpperCase() == true -> addStyle(styleType, i, j)
+        highlightResult.getHighlights()
+            .filterIsInstance<BoldHighlight>()
+            .forEach { token ->
+                val start = token.location.start
+                val end = token.location.end
+                if (start in 0..length && end in 0..length && start < end) {
+                    addStyle(SpanStyle(fontWeight = FontWeight.Bold), start = start, end = end)
                 }
-                i = j
-                continue
             }
-
-            append(current)
-            if (current in setOf('{', '}', '(', ')', '[', ']', ';', ',', ':')) {
-                addStyle(stylePunctuation, i, i + 1)
-            }
-            i += 1
-        }
     }
 }
 
-private fun normalizeLanguage(language: String?): String {
+private fun normalizeFenceLanguage(language: String?): String? {
+    val raw = language?.trim()?.lowercase().orEmpty()
+    if (raw.isBlank()) return null
     return when (language?.lowercase()) {
         "kts" -> "kotlin"
         "kt" -> "kotlin"
@@ -759,121 +708,7 @@ private fun normalizeLanguage(language: String?): String {
         "py" -> "python"
         "sh", "bash", "zsh" -> "shell"
         "yml" -> "yaml"
-        else -> language?.lowercase().orEmpty()
-    }
-}
-
-private fun supportsBacktickStrings(language: String): Boolean {
-    return language == "javascript" || language == "typescript" || language == "kotlin"
-}
-
-private fun isLineCommentStart(language: String, current: Char, next: Char?): Boolean {
-    return when {
-        current == '/' && next == '/' -> true
-        current == '#' && (language == "python" || language == "shell" || language == "yaml") -> true
-        else -> false
-    }
-}
-
-private fun languageKeywords(language: String): Set<String> {
-    return when (language) {
-        "kotlin" -> setOf(
-            "package", "import", "class", "interface", "object", "fun", "val", "var", "if", "else",
-            "when", "for", "while", "do", "return", "try", "catch", "finally", "throw", "null",
-            "true", "false", "is", "in", "as", "this", "super", "override", "private", "public",
-            "internal", "protected", "suspend", "data", "sealed", "enum", "companion"
-        )
-        "typescript", "javascript" -> setOf(
-            "function", "const", "let", "var", "if", "else", "switch", "case", "for", "while",
-            "do", "return", "try", "catch", "finally", "throw", "class", "extends", "implements",
-            "new", "import", "export", "from", "as", "true", "false", "null", "undefined", "async",
-            "await", "type", "interface"
-        )
-        "python" -> setOf(
-            "def", "class", "if", "elif", "else", "for", "while", "return", "try", "except", "finally",
-            "raise", "import", "from", "as", "with", "lambda", "True", "False", "None", "pass", "break",
-            "continue", "yield", "async", "await"
-        )
-        "shell" -> setOf(
-            "if", "then", "else", "fi", "for", "in", "do", "done", "case", "esac", "while", "function",
-            "return", "local", "export"
-        )
-        "java" -> setOf(
-            "package", "import", "class", "interface", "enum", "public", "private", "protected", "static",
-            "final", "void", "new", "if", "else", "switch", "case", "for", "while", "return", "try",
-            "catch", "finally", "throw", "true", "false", "null"
-        )
-        "json" -> setOf("true", "false", "null")
-        else -> setOf(
-            "if", "else", "for", "while", "return", "class", "function", "const", "let", "var", "true",
-            "false", "null"
-        )
-    }
-}
-
-@Composable
-private fun rememberCodexMarkdownStyle(): RichTextStyle {
-    val colors = CodexTheme.colors
-    val typography = MaterialTheme.typography
-    return remember(colors, typography) {
-        RichTextStyle(
-            paragraphSpacing = 6.sp,
-            headingStyle = { level, _ ->
-                when (level) {
-                    1 -> typography.titleLarge.copy(fontWeight = FontWeight.SemiBold, color = colors.textPrimary)
-                    2 -> typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, color = colors.textPrimary)
-                    3 -> typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, color = colors.textPrimary)
-                    else -> typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold, color = colors.textPrimary)
-                }
-            },
-            listStyle = ListStyle(itemSpacing = 3.sp),
-            blockQuoteGutter =
-                BlockQuoteGutter.BarGutter(
-                    color = { colors.borderDefault },
-                    startMargin = 4.sp,
-                    barWidth = 3.sp,
-                    endMargin = 8.sp,
-                ),
-            codeBlockStyle =
-                CodeBlockStyle(
-                    textStyle = typography.bodySmall.copy(fontFamily = FontFamily.Monospace, color = colors.textPrimary),
-                    modifier =
-                        Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .border(1.dp, colors.borderDefault, RoundedCornerShape(8.dp)),
-                    padding = 12.sp,
-                    wordWrap = false,
-                ),
-            tableStyle =
-                TableStyle(
-                    headerTextStyle = typography.bodySmall.copy(fontWeight = FontWeight.SemiBold, color = colors.textPrimary),
-                    cellPadding = 8.sp,
-                    borderColor = colors.borderDefault,
-                    borderStrokeWidth = 1f,
-                ),
-            stringStyle =
-                RichTextStringStyle(
-                    codeStyle =
-                        SpanStyle(
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Medium,
-                            background = Color.Transparent,
-                        ),
-                    linkStyle =
-                        TextLinkStyles(
-                            style =
-                                SpanStyle(
-                                    color = colors.accentPrimary,
-                                    textDecoration = TextDecoration.Underline,
-                                ),
-                            pressedStyle =
-                                SpanStyle(
-                                    color = colors.accentPrimary.copy(alpha = 0.75f),
-                                    textDecoration = TextDecoration.Underline,
-                                ),
-                        ),
-                ),
-        )
+        else -> raw
     }
 }
 

@@ -279,12 +279,34 @@ fun CodexDroidDrawerContent(
                                                             .padding(NavigationDrawerItemDefaults.ItemPadding),
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
-                                                    OutlinedTextField(
+                                                    TextField(
                                                         value = renameDraft,
                                                         onValueChange = { renameDraft = it },
                                                         singleLine = true,
-                                                        modifier = Modifier.weight(1f),
-                                                        placeholder = { Text("New name") }
+                                                        modifier =
+                                                            Modifier
+                                                                .weight(1f)
+                                                                .heightIn(min = 52.dp)
+                                                                .clip(RoundedCornerShape(24.dp))
+                                                                .border(
+                                                                    width = 1.dp,
+                                                                    color = CodexTheme.colors.inputFieldBorder,
+                                                                    shape = RoundedCornerShape(24.dp)
+                                                                ),
+                                                        placeholder = { Text("New name", color = CodexTheme.colors.textSecondary) },
+                                                        colors =
+                                                            TextFieldDefaults.colors(
+                                                                focusedContainerColor = CodexTheme.colors.inputFieldBackground,
+                                                                unfocusedContainerColor = CodexTheme.colors.inputFieldBackground,
+                                                                disabledContainerColor = CodexTheme.colors.inputFieldBackground,
+                                                                focusedIndicatorColor = Color.Transparent,
+                                                                unfocusedIndicatorColor = Color.Transparent,
+                                                                disabledIndicatorColor = Color.Transparent,
+                                                                focusedTextColor = CodexTheme.colors.textPrimary,
+                                                                unfocusedTextColor = CodexTheme.colors.textPrimary,
+                                                                disabledTextColor = CodexTheme.colors.textPrimary,
+                                                                disabledPlaceholderColor = CodexTheme.colors.textSecondary,
+                                                            )
                                                     )
                                                     Spacer(Modifier.width(8.dp))
                                                     Surface(

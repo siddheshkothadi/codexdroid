@@ -15,6 +15,7 @@ data class SarvamTtsSettings(
         const val DEFAULT_SPEECH_SAMPLE_RATE = 24_000
         const val DEFAULT_TEMPERATURE = 0.6f
 
+        val SUPPORTED_VOICES = setOf("Shubh", "Ritu", "Amelia", "Sophia")
         val SUPPORTED_SAMPLE_RATES = setOf(8_000, 16_000, 22_050, 24_000, 32_000, 44_100, 48_000)
         val SUPPORTED_LANGUAGE_CODES = setOf(
             "en-IN",
@@ -32,7 +33,11 @@ data class SarvamTtsSettings(
 
         fun sanitize(input: SarvamTtsSettings): SarvamTtsSettings {
             return input.copy(
-                voice = input.voice.trim().ifBlank { DEFAULT_VOICE },
+                voice =
+                    input.voice
+                        .trim()
+                        .takeIf { it in SUPPORTED_VOICES }
+                        ?: DEFAULT_VOICE,
                 targetLanguageCode =
                     input.targetLanguageCode
                         .trim()

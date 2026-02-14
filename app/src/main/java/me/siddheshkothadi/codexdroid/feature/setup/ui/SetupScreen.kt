@@ -57,6 +57,7 @@ fun SetupScreen(
 
     Scaffold(
         modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        containerColor = CodexTheme.colors.bgPrimary,
         topBar = {
             LargeTopAppBar(
                 title = { Text(if (isEditMode) "Edit Connection" else "Setup Codex Connection") },
@@ -73,8 +74,8 @@ fun SetupScreen(
         bottomBar = {
             Surface(
                 color = CodexTheme.colors.bgPrimary,
-                tonalElevation = 2.dp,
-                shadowElevation = 8.dp
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp
             ) {
                 Column(
                     modifier = Modifier

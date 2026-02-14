@@ -1124,11 +1124,71 @@ private fun normalizeTextForSpeech(input: String): String {
         .replace(Regex("(?m)^\\s*[-*+]\\s+"), "")
         .replace(Regex("(?m)^\\s*\\d+\\.\\s+"), "")
         .replace(Regex("(?m)^\\s*>+\\s?"), "")
+        // Expand common contractions so models pronounce phrases more naturally.
+        .let(::expandCommonSpeechContractions)
         // Remove emphasis/control markers that sound awkward in TTS.
         .replace(Regex("[*_~]"), "")
         .replace(Regex("<[^>]+>"), " ")
         .replace(Regex("\\s+"), " ")
         .trim()
+}
+
+private fun expandCommonSpeechContractions(text: String): String {
+    var out = text
+    val replacements =
+        listOf(
+            "\\b[Ii]['’]m\\b" to "I am",
+            "\\b[Ii]['’]ll\\b" to "I will",
+            "\\b[Ii]['’]ve\\b" to "I have",
+            "\\b[Ii]['’]d\\b" to "I would",
+            "\\b[Yy]ou['’]re\\b" to "you are",
+            "\\b[Yy]ou['’]ll\\b" to "you will",
+            "\\b[Yy]ou['’]ve\\b" to "you have",
+            "\\b[Yy]ou['’]d\\b" to "you would",
+            "\\b[Ww]e['’]re\\b" to "we are",
+            "\\b[Ww]e['’]ll\\b" to "we will",
+            "\\b[Ww]e['’]ve\\b" to "we have",
+            "\\b[Ww]e['’]d\\b" to "we would",
+            "\\b[Tt]hey['’]re\\b" to "they are",
+            "\\b[Tt]hey['’]ll\\b" to "they will",
+            "\\b[Tt]hey['’]ve\\b" to "they have",
+            "\\b[Tt]hey['’]d\\b" to "they would",
+            "\\b[Hh]e['’]s\\b" to "he is",
+            "\\b[Hh]e['’]ll\\b" to "he will",
+            "\\b[Hh]e['’]d\\b" to "he would",
+            "\\b[Ss]he['’]s\\b" to "she is",
+            "\\b[Ss]he['’]ll\\b" to "she will",
+            "\\b[Ss]he['’]d\\b" to "she would",
+            "\\b[Ii]t['’]s\\b" to "it is",
+            "\\b[Tt]hat['’]s\\b" to "that is",
+            "\\b[Tt]here['’]s\\b" to "there is",
+            "\\b[Hh]ere['’]s\\b" to "here is",
+            "\\b[Ww]hat['’]s\\b" to "what is",
+            "\\b[Ww]ho['’]s\\b" to "who is",
+            "\\b[Ll]et['’]s\\b" to "let us",
+            "\\b[Cc]an['’]t\\b" to "cannot",
+            "\\b[Ww]on['’]t\\b" to "will not",
+            "\\b[Dd]on['’]t\\b" to "do not",
+            "\\b[Dd]oesn['’]t\\b" to "does not",
+            "\\b[Dd]idn['’]t\\b" to "did not",
+            "\\b[Ii]sn['’]t\\b" to "is not",
+            "\\b[Aa]ren['’]t\\b" to "are not",
+            "\\b[Ww]asn['’]t\\b" to "was not",
+            "\\b[Ww]eren['’]t\\b" to "were not",
+            "\\b[Hh]aven['’]t\\b" to "have not",
+            "\\b[Hh]asn['’]t\\b" to "has not",
+            "\\b[Hh]adn['’]t\\b" to "had not",
+            "\\b[Ww]ouldn['’]t\\b" to "would not",
+            "\\b[Ss]houldn['’]t\\b" to "should not",
+            "\\b[Cc]ouldn['’]t\\b" to "could not",
+            "\\b[Mm]ustn['’]t\\b" to "must not",
+            "\\b[Mm]ightn['’]t\\b" to "might not",
+            "\\b[Nn]eedn['’]t\\b" to "need not",
+        )
+    replacements.forEach { (pattern, replacement) ->
+        out = out.replace(Regex(pattern), replacement)
+    }
+    return out
 }
 
 @Composable

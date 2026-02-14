@@ -3,6 +3,8 @@ package me.siddheshkothadi.codexdroid.feature.settings.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,9 +21,7 @@ import javax.inject.Inject
 data class SettingsUiState(
     val settings: SarvamTtsSettings = SarvamTtsSettings(),
     val sarvamApiKeyDraft: String = "",
-    val isSarvamApiKeyVisible: Boolean = false,
     val isLoading: Boolean = true,
-    val statusMessage: String? = null,
 )
 
 @HiltViewModel
@@ -33,6 +33,7 @@ class SettingsViewModel @Inject constructor(
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
+    private var persistApiKeyJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -55,16 +56,8 @@ class SettingsViewModel @Inject constructor(
         updateSettings { it.copy(voice = voice) }
     }
 
-    fun onTargetLanguageChanged(targetLanguageCode: String) {
-        updateSettings { it.copy(targetLanguageCode = targetLanguageCode) }
-    }
-
     fun onPaceChanged(pace: Float) {
         updateSettings { it.copy(pace = pace) }
-    }
-
-    fun onSpeechSampleRateChanged(speechSampleRate: Int) {
-        updateSettings { it.copy(speechSampleRate = speechSampleRate) }
     }
 
     fun onTemperatureChanged(temperature: Float) {
@@ -72,40 +65,19 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun onSarvamApiKeyDraftChanged(value: String) {
-        _uiState.update { it.copy(sarvamApiKeyDraft = value, statusMessage = null) }
-    }
-
-    fun toggleSarvamApiKeyVisibility() {
-        _uiState.update { it.copy(isSarvamApiKeyVisible = !it.isSarvamApiKeyVisible) }
-    }
-
-    fun saveSarvamApiKey() {
-        val candidate = _uiState.value.sarvamApiKeyDraft
-        viewModelScope.launch {
-            updateSarvamApiKeyUseCase(candidate)
-            _uiState.update {
-                it.copy(
-                    statusMessage =
-                        if (candidate.isBlank()) {
-                            "Sarvam API key removed."
-                        } else {
-                            "Sarvam API key updated."
-                        }
-                )
+        _uiState.update { it.copy(sarvamApiKeyDraft = value) }
+        persistApiKeyJob?.cancel()
+        persistApiKeyJob =
+            viewModelScope.launch {
+                delay(350)
+                updateSarvamApiKeyUseCase(value)
             }
-        }
-    }
-
-    fun clearStatusMessage() {
-        _uiState.update { it.copy(statusMessage = null) }
     }
 
     private fun updateSettings(transform: (SarvamTtsSettings) -> SarvamTtsSettings) {
         val updated = transform(_uiState.value.settings)
         viewModelScope.launch {
             updateSarvamTtsSettingsUseCase(updated)
-            _uiState.update { it.copy(statusMessage = null) }
         }
     }
 }
-

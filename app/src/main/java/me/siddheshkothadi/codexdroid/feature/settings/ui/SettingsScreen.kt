@@ -19,19 +19,17 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -44,6 +42,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -63,44 +62,9 @@ private data class VoiceOption(
 
 private val SarvamVoiceOptions = listOf(
     VoiceOption("Shubh (default)", "Shubh"),
-    VoiceOption("Aditya", "Aditya"),
     VoiceOption("Ritu", "Ritu"),
-    VoiceOption("Priya", "Priya"),
-    VoiceOption("Neha", "Neha"),
-    VoiceOption("Rahul", "Rahul"),
-    VoiceOption("Pooja", "Pooja"),
-    VoiceOption("Rohan", "Rohan"),
-    VoiceOption("Simran", "Simran"),
-    VoiceOption("Kavya", "Kavya"),
-    VoiceOption("Amit", "Amit"),
-    VoiceOption("Dev", "Dev"),
-    VoiceOption("Ishita", "Ishita"),
-    VoiceOption("Shreya", "Shreya"),
-    VoiceOption("Ratan", "Ratan"),
-    VoiceOption("Varun", "Varun"),
-    VoiceOption("Manan", "Manan"),
-    VoiceOption("Sumit", "Sumit"),
-    VoiceOption("Roopa", "Roopa"),
-    VoiceOption("Kabir", "Kabir"),
-    VoiceOption("Aayan", "Aayan"),
-    VoiceOption("Ashutosh", "Ashutosh"),
-    VoiceOption("Advait", "Advait"),
     VoiceOption("Amelia", "Amelia"),
     VoiceOption("Sophia", "Sophia"),
-    VoiceOption("Anand", "Anand"),
-    VoiceOption("Tanya", "Tanya"),
-    VoiceOption("Tarun", "Tarun"),
-    VoiceOption("Sunny", "Sunny"),
-    VoiceOption("Mani", "Mani"),
-    VoiceOption("Gokul", "Gokul"),
-    VoiceOption("Vijay", "Vijay"),
-    VoiceOption("Shruti", "Shruti"),
-    VoiceOption("Suhani", "Suhani"),
-    VoiceOption("Mohit", "Mohit"),
-    VoiceOption("Kavitha", "Kavitha"),
-    VoiceOption("Rehan", "Rehan"),
-    VoiceOption("Soham", "Soham"),
-    VoiceOption("Rupali", "Rupali"),
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -114,9 +78,13 @@ fun SettingsScreen(
     val colors = CodexTheme.colors
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var paceDraft by remember(uiState.settings.pace) { mutableFloatStateOf(uiState.settings.pace) }
+    var temperatureDraft by remember(uiState.settings.temperature) { mutableFloatStateOf(uiState.settings.temperature) }
 
     LaunchedEffect(uiState.settings.pace) {
         paceDraft = uiState.settings.pace
+    }
+    LaunchedEffect(uiState.settings.temperature) {
+        temperatureDraft = uiState.settings.temperature
     }
 
     val selectedVoiceLabel =
@@ -162,7 +130,7 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.labelLarge,
                 color = colors.textPrimary
             )
-            VoiceDropdownField(
+            VoiceSelectorField(
                 selectedLabel = selectedVoiceLabel,
                 options = SarvamVoiceOptions,
                 colors = colors,
@@ -181,8 +149,26 @@ fun SettingsScreen(
                 onValueChangeFinished = { viewModel.onPaceChanged(paceDraft) },
                 colors =
                     SliderDefaults.colors(
-                        thumbColor = colors.accentPrimary,
-                        activeTrackColor = colors.accentPrimary,
+                        thumbColor = colors.accentAction,
+                        activeTrackColor = colors.accentAction,
+                        inactiveTrackColor = colors.borderDefault,
+                    ),
+            )
+
+            Text(
+                text = "Temperature: ${"%.2f".format(temperatureDraft)}",
+                style = MaterialTheme.typography.labelLarge,
+                color = colors.textPrimary
+            )
+            Slider(
+                value = temperatureDraft,
+                onValueChange = { temperatureDraft = it },
+                valueRange = 0.01f..2.0f,
+                onValueChangeFinished = { viewModel.onTemperatureChanged(temperatureDraft) },
+                colors =
+                    SliderDefaults.colors(
+                        thumbColor = colors.accentAction,
+                        activeTrackColor = colors.accentAction,
                         inactiveTrackColor = colors.borderDefault,
                     ),
             )
@@ -192,26 +178,44 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.labelLarge,
                 color = colors.textPrimary
             )
-            ApiKeyEditor(
+            TextField(
                 value = uiState.sarvamApiKeyDraft,
                 onValueChange = viewModel::onSarvamApiKeyDraftChanged,
-                onSave = viewModel::saveSarvamApiKey,
-                colors = colors,
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                placeholder = { Text("Optional API key", color = colors.textSecondary) },
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 56.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .border(width = 1.dp, color = colors.inputFieldBorder, shape = RoundedCornerShape(24.dp)),
+                colors =
+                    TextFieldDefaults.colors(
+                        focusedContainerColor = colors.inputFieldBackground,
+                        unfocusedContainerColor = colors.inputFieldBackground,
+                        disabledContainerColor = colors.inputFieldBackground,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        disabledIndicatorColor = Color.Transparent,
+                        focusedTextColor = colors.textPrimary,
+                        unfocusedTextColor = colors.textPrimary,
+                        disabledTextColor = colors.textPrimary,
+                        disabledPlaceholderColor = colors.textSecondary,
+                    )
             )
-
-            uiState.statusMessage?.let { message ->
-                Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.textSecondary
-                )
-            }
+            Text(
+                text = "Auto-saved while typing.",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textSecondary
+            )
         }
     }
 }
 
 @Composable
-private fun VoiceDropdownField(
+private fun VoiceSelectorField(
     selectedLabel: String,
     options: List<VoiceOption>,
     colors: CodexColors,
@@ -221,44 +225,38 @@ private fun VoiceDropdownField(
     val shape = RoundedCornerShape(24.dp)
 
     Box(modifier = Modifier.fillMaxWidth()) {
-        TextField(
-            value = selectedLabel,
-            onValueChange = {},
-            readOnly = true,
-            singleLine = true,
+        Surface(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 56.dp)
                     .clip(shape)
+                    .clickable { expanded = true }
                     .border(width = 1.dp, color = colors.inputFieldBorder, shape = shape),
-            trailingIcon = {
+            color = colors.inputFieldBackground,
+            shape = shape,
+        ) {
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 56.dp)
+                        .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = selectedLabel,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = colors.textPrimary
+                )
                 Icon(
                     imageVector = Icons.Default.ArrowDropDown,
                     contentDescription = "Expand voice options",
                     tint = colors.textSecondary
                 )
-            },
-            colors =
-                TextFieldDefaults.colors(
-                    focusedContainerColor = colors.inputFieldBackground,
-                    unfocusedContainerColor = colors.inputFieldBackground,
-                    disabledContainerColor = colors.inputFieldBackground,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent,
-                    focusedTextColor = colors.textPrimary,
-                    unfocusedTextColor = colors.textPrimary,
-                    disabledTextColor = colors.textPrimary,
-                )
-        )
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .clip(shape)
-                    .clickable { expanded = true }
-        )
+            }
+        }
+
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
@@ -273,58 +271,6 @@ private fun VoiceDropdownField(
                     },
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun ApiKeyEditor(
-    value: String,
-    onValueChange: (String) -> Unit,
-    onSave: () -> Unit,
-    colors: CodexColors,
-) {
-    val shape = RoundedCornerShape(24.dp)
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        TextField(
-            value = value,
-            onValueChange = onValueChange,
-            singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            placeholder = { Text("Optional API key", color = colors.textSecondary) },
-            modifier =
-                Modifier
-                    .weight(1f)
-                    .heightIn(min = 56.dp)
-                    .clip(shape)
-                    .border(width = 1.dp, color = colors.inputFieldBorder, shape = shape),
-            colors =
-                TextFieldDefaults.colors(
-                    focusedContainerColor = colors.inputFieldBackground,
-                    unfocusedContainerColor = colors.inputFieldBackground,
-                    disabledContainerColor = colors.inputFieldBackground,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent,
-                    focusedTextColor = colors.textPrimary,
-                    unfocusedTextColor = colors.textPrimary,
-                    disabledTextColor = colors.textPrimary,
-                    disabledPlaceholderColor = colors.textSecondary,
-                )
-        )
-        FilledIconButton(
-            onClick = onSave,
-            colors =
-                IconButtonDefaults.filledIconButtonColors(
-                    containerColor = colors.bgSecondary,
-                    contentColor = colors.textPrimary,
-                )
-        ) {
-            Icon(
-                imageVector = Icons.Default.Check,
-                contentDescription = "Update API key",
-            )
         }
     }
 }

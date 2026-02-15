@@ -1124,6 +1124,10 @@ private fun normalizeTextForSpeech(input: String): String {
         .replace(Regex("(?m)^\\s*>+\\s?"), "")
         // Expand common contractions so models pronounce phrases more naturally.
         .let(::expandCommonSpeechContractions)
+        // Drop symbols that are read awkwardly by Android/Sarvam TTS.
+        .replace("/", " ")
+        .replace("(", " ")
+        .replace(")", " ")
         // Remove emphasis/control markers that sound awkward in TTS.
         .replace(Regex("[*_~]"), "")
         .replace(Regex("<[^>]+>"), " ")

@@ -226,11 +226,12 @@ fun CommandExecutionItem(item: ThreadItem.CommandExecution) {
                 }
 
                 item.aggregatedOutput?.let { out ->
-                    if (out.isNotBlank()) {
+                    val trimmedOutput = trimCommandRunOutput(out)
+                    if (trimmedOutput.isNotBlank()) {
                         if (item.command.isNotBlank()) Spacer(Modifier.height(8.dp))
                         Text("Output", style = MaterialTheme.typography.labelSmall, color = CodexTheme.colors.textSecondary)
                         Text(
-                            out,
+                            trimmedOutput,
                             style = MaterialTheme.typography.bodySmall,
                             color = CodexTheme.colors.textSecondary
                         )
@@ -711,6 +712,22 @@ private fun normalizeFenceLanguage(language: String?): String? {
         "sh", "bash", "zsh" -> "shell"
         "yml" -> "yaml"
         else -> raw
+    }
+}
+
+private fun trimCommandRunOutput(output: String, topLines: Int = 5, bottomLines: Int = 5): String {
+    if (output.isBlank()) return ""
+    val lines = output.lines()
+    val keepCount = topLines + bottomLines
+    if (lines.size <= keepCount) return output
+
+    val omitted = lines.size - keepCount
+    return buildString {
+        append(lines.take(topLines).joinToString("\n"))
+        append('\n')
+        append("... ($omitted lines omitted) ...")
+        append('\n')
+        append(lines.takeLast(bottomLines).joinToString("\n"))
     }
 }
 

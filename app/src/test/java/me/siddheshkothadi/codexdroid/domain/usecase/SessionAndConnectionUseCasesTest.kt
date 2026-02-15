@@ -148,6 +148,7 @@ class SessionAndConnectionUseCasesTest {
             cwd: String?,
             model: String?,
             effort: String?,
+            collaborationMode: JsonElement?,
         ): CodexResponse<TurnStartResult> {
             error("Not needed in test")
         }

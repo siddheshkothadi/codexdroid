@@ -59,9 +59,6 @@ fun HistoryScreen(
                     onAddConnectionClick()
                     scope.launch { drawerState.close() }
                 },
-                onSettingsClick = {
-                    scope.launch { drawerState.close() }
-                },
                 connectionStatus = connectionStatus,
                 isSyncing = isRefreshing,
             )

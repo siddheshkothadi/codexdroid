@@ -1,5 +1,6 @@
 package me.siddheshkothadi.codexdroid.ui.navigation
 
+import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 import me.siddheshkothadi.codexdroid.feature.session.ui.SessionScreen
 import me.siddheshkothadi.codexdroid.feature.session.ui.SessionViewModel
+import me.siddheshkothadi.codexdroid.feature.skills.ui.SkillsScreen
 import me.siddheshkothadi.codexdroid.feature.settings.ui.SettingsScreen
 import me.siddheshkothadi.codexdroid.feature.setup.ui.SetupScreen
 import me.siddheshkothadi.codexdroid.feature.setup.ui.SetupUiState
@@ -42,6 +44,12 @@ sealed class Screen(val route: String) {
         }
     }
     object Settings : Screen("settings")
+    object Skills : Screen("skills?cwd={cwd}") {
+        fun createRoute(cwd: String? = null): String {
+            val normalized = cwd?.trim()?.takeIf { it.isNotBlank() } ?: return "skills"
+            return "skills?cwd=${Uri.encode(normalized)}"
+        }
+    }
 }
 
 @Composable
@@ -159,9 +167,26 @@ fun NavGraph(
                         popUpTo(Screen.Session.route) { inclusive = true }
                     }
                 },
+                onSkillsClick = { cwd ->
+                    navController.navigate(Screen.Skills.createRoute(cwd))
+                },
                 onSettingsClick = {
                     navController.navigate(Screen.Settings.route)
                 }
+            )
+        }
+        composable(
+            route = Screen.Skills.route,
+            arguments = listOf(
+                navArgument("cwd") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) {
+            SkillsScreen(
+                onBackClick = { navController.popBackStack() }
             )
         }
         composable(route = Screen.Settings.route) {

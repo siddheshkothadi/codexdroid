@@ -17,7 +17,6 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -52,7 +51,6 @@ fun CodexDroidDrawerContent(
     onStartThreadInCwd: (String) -> Unit = {},
     onDeleteThreadsInCwd: (String) -> Unit = {},
     onSetupClick: () -> Unit,
-    onSettingsClick: () -> Unit = {},
     modifier: Modifier = Modifier,
     activeThreadId: String? = null,
     connectionStatus: ConnectionStatus = ConnectionStatus.Unknown,
@@ -488,7 +486,6 @@ fun CodexDroidDrawerContent(
                 onEditClick = onEditClick,
                 onDeleteClick = onDeleteClick,
                 onSetupClick = onSetupClick,
-                onSettingsClick = onSettingsClick,
                 connectionStatus = connectionStatus,
                 isSyncing = isSyncing,
                 modifier = Modifier.padding(16.dp)
@@ -504,7 +501,6 @@ fun ConnectionSelector(
     onEditClick: (String) -> Unit,
     onDeleteClick: (String) -> Unit,
     onSetupClick: () -> Unit,
-    onSettingsClick: () -> Unit,
     connectionStatus: ConnectionStatus,
     isSyncing: Boolean,
     modifier: Modifier = Modifier
@@ -632,30 +628,6 @@ fun ConnectionSelector(
             }
         }
 
-        Spacer(Modifier.height(8.dp))
-        Surface(
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onSettingsClick),
-            shape = RoundedCornerShape(16.dp),
-            color = colors.bgSecondary,
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = null,
-                    tint = colors.textSecondary,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = "Settings",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.textPrimary,
-                )
-            }
-        }
     }
 
     confirmDelete?.let { connection ->

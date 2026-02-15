@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -49,7 +50,6 @@ import kotlinx.coroutines.launch
 import me.siddheshkothadi.codexdroid.codex.*
 import me.siddheshkothadi.codexdroid.feature.shared.ui.components.CodexDroidDrawerContent
 import me.siddheshkothadi.codexdroid.feature.history.ui.HistoryUiState
-import me.siddheshkothadi.codexdroid.ui.theme.CodexColors
 import me.siddheshkothadi.codexdroid.ui.theme.CodexTheme
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -67,6 +67,7 @@ fun SessionScreen(
     onAddConnectionClick: () -> Unit = {},
     onEditConnectionClick: (String) -> Unit = {},
     onNoConnections: () -> Unit = {},
+    onSkillsClick: (String?) -> Unit = {},
     onSettingsClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -154,10 +155,6 @@ fun SessionScreen(
                 },
                 onSetupClick = {
                     onAddConnectionClick()
-                    scope.launch { drawerState.close() }
-                },
-                onSettingsClick = {
-                    onSettingsClick()
                     scope.launch { drawerState.close() }
                 },
                 connectionStatus = uiState.connectionStatus,
@@ -305,9 +302,26 @@ fun SessionScreen(
         ControlsBottomSheet(
             uiState = uiState,
             onDismiss = { showControlsSheet = false },
-            onSave = { modelId, effort, planModeEnabled ->
-                viewModel.saveControlsSelection(modelId, effort, planModeEnabled)
+            onPlanModeChange = { enabled ->
+                viewModel.setPlanModeEnabled(enabled)
+            },
+            onModelSelect = { modelId ->
+                viewModel.applyModelSelection(modelId)
+            },
+            onEffortSelect = { effort ->
+                viewModel.applyEffortSelection(effort)
+            },
+            onSkillsClick = {
+                val cwd =
+                    uiState.currentThread?.cwd?.takeIf { it.isNotBlank() }
+                        ?: uiState.currentThread?.path?.takeIf { it.isNotBlank() }
+                        ?: uiState.selectedCwd
                 showControlsSheet = false
+                onSkillsClick(cwd)
+            },
+            onSettingsClick = {
+                showControlsSheet = false
+                onSettingsClick()
             },
         )
     }
@@ -577,16 +591,16 @@ private fun SessionTopBar(
 private fun ControlsBottomSheet(
     uiState: SessionUiState,
     onDismiss: () -> Unit,
-    onSave: (String?, String?, Boolean) -> Unit,
+    onPlanModeChange: (Boolean) -> Unit,
+    onModelSelect: (String?) -> Unit,
+    onEffortSelect: (String?) -> Unit,
+    onSkillsClick: () -> Unit,
+    onSettingsClick: () -> Unit,
 ) {
     val colors = CodexTheme.colors
     val models = uiState.models
-    var draftModelId by rememberSaveable(uiState.selectedModelId) { mutableStateOf(uiState.selectedModelId) }
-    var draftEffort by rememberSaveable(uiState.selectedEffort) { mutableStateOf(uiState.selectedEffort) }
-    var draftPlanModeEnabled by rememberSaveable(uiState.planModeEnabled) { mutableStateOf(uiState.planModeEnabled) }
-
     val selectedModel =
-        draftModelId?.let { id -> models.firstOrNull { it.id == id || it.model == id } }
+        uiState.selectedModelId?.let { id -> models.firstOrNull { it.id == id || it.model == id } }
     val supportedEfforts =
         selectedModel?.supportedReasoningEfforts?.map { it.reasoningEffort }?.filter { it.isNotBlank() }.orEmpty()
     val defaultEffort = selectedModel?.defaultReasoningEffort?.takeIf { it.isNotBlank() }
@@ -596,330 +610,309 @@ private fun ControlsBottomSheet(
             defaultEffort != null -> listOf(defaultEffort)
             else -> emptyList()
         }
-    val persistedModel = uiState.selectedModelId?.takeIf { it.isNotBlank() }
-    val persistedEffort = uiState.selectedEffort?.takeIf { it.isNotBlank() }
-    val normalizedDraftModel = draftModelId?.takeIf { it.isNotBlank() }
-    val normalizedDraftEffort = draftEffort?.takeIf { it.isNotBlank() }
-    val isDirty =
-        normalizedDraftModel != persistedModel ||
-            normalizedDraftEffort != persistedEffort ||
-            draftPlanModeEnabled != uiState.planModeEnabled
+    val selectedModelLabel =
+        selectedModel?.displayName
+            ?: uiState.selectedModelId?.takeIf { it.isNotBlank() }
+            ?: "No model selected"
+    val selectedEffortLabel =
+        uiState.selectedEffort?.takeIf { it.isNotBlank() }
+            ?: effortOptions.firstOrNull()
+            ?: "No reasoning effort available"
+    val skillsSubtitle =
+        when {
+            uiState.isControlsSyncing && uiState.skills.isEmpty() -> "Loading skills for this workspace."
+            uiState.skills.isEmpty() -> "Browse skills available for this workspace."
+            else -> {
+                val count = uiState.skills.size
+                "$count skill${if (count == 1) "" else "s"} available for this workspace."
+            }
+        }
 
-    var tabIndex by rememberSaveable { mutableIntStateOf(0) }
+    var modelExpanded by rememberSaveable { mutableStateOf(false) }
+    var effortExpanded by rememberSaveable { mutableStateOf(false) }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = colors.bgPrimary,
         tonalElevation = 0.dp,
     ) {
-        Column(Modifier.fillMaxWidth()) {
-            Surface(color = colors.bgPrimary) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Session controls", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                        Button(
-                            onClick = { onSave(normalizedDraftModel, normalizedDraftEffort, draftPlanModeEnabled) },
-                            enabled = !uiState.isControlsSyncing && isDirty,
-                            shape = RoundedCornerShape(12.dp),
-                            colors =
-                                ButtonDefaults.buttonColors(
-                                    containerColor = colors.monochromeActionBackground,
-                                    contentColor = colors.monochromeActionContent,
-                                    disabledContainerColor = colors.monochromeActionBackground.copy(alpha = 0.45f),
-                                    disabledContentColor = colors.monochromeActionContent.copy(alpha = 0.7f),
-                                ),
-                        ) { Text("Save") }
-                    }
-                    if (uiState.isControlsSyncing) {
-                        Spacer(Modifier.height(8.dp))
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                    }
-                    if (!uiState.controlsError.isNullOrBlank()) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = uiState.controlsError!!,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = colors.accentError
-                        )
-                    }
-
-                    Spacer(Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Plan mode",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = colors.textPrimary,
-                            )
-                            Text(
-                                text = "Ask Codex to explicitly plan steps before execution.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = colors.textSecondary,
-                            )
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Switch(
-                            checked = draftPlanModeEnabled,
-                            onCheckedChange = { draftPlanModeEnabled = it },
-                            enabled = !uiState.isControlsSyncing,
-                            colors =
-                                SwitchDefaults.colors(
-                                    checkedThumbColor = colors.controlStrongOn,
-                                    checkedTrackColor = colors.controlStrong,
-                                    uncheckedThumbColor = colors.textSecondary,
-                                    uncheckedTrackColor = colors.bgSecondary,
-                                ),
-                        )
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    TabRow(
-                        selectedTabIndex = tabIndex,
-                        containerColor = colors.bgPrimary,
-                        contentColor = colors.controlStrong,
-                        indicator = {
-                            TabRowDefaults.PrimaryIndicator(
-                                color = colors.controlStrong
-                            )
-                        },
-                    ) {
-                        Tab(
-                            selected = tabIndex == 0,
-                            onClick = { tabIndex = 0 },
-                            selectedContentColor = colors.controlStrong,
-                            unselectedContentColor = colors.textSecondary,
-                            text = { Text("Model") },
-                        )
-                        Tab(
-                            selected = tabIndex == 1,
-                            onClick = { tabIndex = 1 },
-                            selectedContentColor = colors.controlStrong,
-                            unselectedContentColor = colors.textSecondary,
-                            text = { Text("Skills") },
-                        )
-                    }
-                    Spacer(Modifier.height(12.dp))
-                }
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            if (uiState.isControlsSyncing) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+            if (!uiState.controlsError.isNullOrBlank()) {
+                Text(
+                    text = uiState.controlsError!!,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.accentError
+                )
             }
 
-            when (tabIndex) {
-                0 -> {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                        ModelDropdown(
-                            models = models,
-                            selectedModelId = draftModelId,
-                            colors = colors,
-                            onSelectModelId = { nextModelId ->
-                                val normalizedNextModel = nextModelId?.takeIf { it.isNotBlank() }
-                                draftModelId = normalizedNextModel
+            ControlToggleRow(
+                icon = Icons.Default.AccountTree,
+                title = "Plan mode",
+                subtitle = "Ask Codex to explicitly plan steps before execution.",
+                checked = uiState.planModeEnabled,
+                enabled = !uiState.isControlsSyncing,
+                onCheckedChange = onPlanModeChange,
+            )
 
-                                val nextModel =
-                                    normalizedNextModel?.let { id ->
-                                        models.firstOrNull { it.id == id || it.model == id }
-                                    }
-                                val nextSupportedEfforts =
-                                    nextModel?.supportedReasoningEfforts
-                                        ?.map { it.reasoningEffort }
-                                        ?.filter { it.isNotBlank() }
-                                        .orEmpty()
-                                val nextDefaultEffort =
-                                    nextModel?.defaultReasoningEffort?.takeIf { it.isNotBlank() }
-                                val currentEffort = draftEffort?.takeIf { it.isNotBlank() }
-
-                                draftEffort =
-                                    when {
-                                        currentEffort != null &&
-                                            (nextSupportedEfforts.isEmpty() || currentEffort in nextSupportedEfforts) ->
-                                            currentEffort
-                                        nextDefaultEffort != null &&
-                                            (nextSupportedEfforts.isEmpty() || nextDefaultEffort in nextSupportedEfforts) ->
-                                            nextDefaultEffort
-                                        nextSupportedEfforts.isNotEmpty() ->
-                                            nextSupportedEfforts.first()
-                                        else -> null
-                                    }
-                            }
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        EffortDropdown(
-                            efforts = effortOptions,
-                            selectedEffort = draftEffort,
-                            colors = colors,
-                            enabled = effortOptions.isNotEmpty(),
-                            onSelect = { nextEffort ->
-                                draftEffort = nextEffort?.takeIf { it.isNotBlank() }
-                            }
-                        )
-                    }
-                    Spacer(Modifier.height(16.dp))
-                }
-                1 -> {
-                    if (uiState.skills.isEmpty()) {
-                        Text(
-                            text = if (uiState.isControlsSyncing) "Loading…" else "No skills found.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = colors.textSecondary,
-                            modifier = Modifier.padding(vertical = 16.dp)
+            Box(modifier = Modifier.fillMaxWidth()) {
+                ControlDropdownRow(
+                    icon = Icons.Default.Memory,
+                    title = "Model",
+                    subtitle = selectedModelLabel,
+                    enabled = models.isNotEmpty(),
+                    expanded = modelExpanded,
+                    onClick = { modelExpanded = true },
+                )
+                DropdownMenu(
+                    expanded = modelExpanded,
+                    onDismissRequest = { modelExpanded = false },
+                    shape = RoundedCornerShape(16.dp),
+                    containerColor = colors.bgSecondary,
+                    tonalElevation = 0.dp,
+                ) {
+                    if (models.isEmpty()) {
+                        DropdownMenuItem(
+                            text = { Text("No models") },
+                            onClick = { modelExpanded = false }
                         )
                     } else {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).padding(horizontal = 16.dp),
-                            contentPadding = PaddingValues(vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            itemsIndexed(
-                                items = uiState.skills,
-                                key = { index, skill -> "${skill.name}:${skill.path}:$index" },
-                            ) { _, skill ->
-                                ElevatedCard {
-                                    Column(Modifier.padding(12.dp)) {
-                                        Text(skill.name, style = MaterialTheme.typography.titleSmall)
-                                        if (!skill.description.isNullOrBlank()) {
-                                            Spacer(Modifier.height(4.dp))
+                        models.forEach { model ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(model.displayName)
+                                        if (model.description.isNotBlank()) {
+                                            Spacer(Modifier.height(2.dp))
                                             Text(
-                                                skill.description!!,
+                                                model.description,
                                                 style = MaterialTheme.typography.bodySmall,
-                                                color = colors.textSecondary
-                                            )
-                                        }
-                                        if (skill.path.isNotBlank()) {
-                                            Spacer(Modifier.height(6.dp))
-                                            Text(
-                                                skill.path,
-                                                style = MaterialTheme.typography.labelSmall,
                                                 color = colors.textSecondary,
                                                 maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis
+                                                overflow = TextOverflow.Ellipsis,
                                             )
                                         }
                                     }
+                                },
+                                onClick = {
+                                    onModelSelect(model.id)
+                                    modelExpanded = false
                                 }
-                            }
+                            )
                         }
                     }
-                    Spacer(Modifier.height(16.dp))
                 }
             }
-        }
-    }
-}
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ModelDropdown(
-    models: List<ModelOptionUi>,
-    selectedModelId: String?,
-    colors: CodexColors,
-    onSelectModelId: (String?) -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val selected = models.firstOrNull { it.id == selectedModelId || it.model == selectedModelId }
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
-        OutlinedTextField(
-            value = selected?.displayName ?: (selectedModelId ?: ""),
-            onValueChange = {},
-            readOnly = true,
-            enabled = models.isNotEmpty(),
-            label = { Text("Model") },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            colors = sessionControlOutlinedTextFieldColors(colors),
-            modifier =
-                Modifier
-                    .menuAnchor(type = MenuAnchorType.PrimaryNotEditable, enabled = models.isNotEmpty())
-                    .fillMaxWidth()
-        )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            if (models.isEmpty()) {
-                DropdownMenuItem(
-                    text = { Text("No models") },
-                    onClick = { expanded = false }
+            Box(modifier = Modifier.fillMaxWidth()) {
+                ControlDropdownRow(
+                    icon = Icons.Default.Psychology,
+                    title = "Reasoning effort",
+                    subtitle = selectedEffortLabel,
+                    enabled = effortOptions.isNotEmpty(),
+                    expanded = effortExpanded,
+                    onClick = { effortExpanded = true },
                 )
-            }
-            models.forEach { model ->
-                DropdownMenuItem(
-                    text = {
-                        Column {
-                            Text(model.displayName)
-                            if (model.description.isNotBlank()) {
-                                Spacer(Modifier.height(2.dp))
-                                Text(
-                                    model.description,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = CodexTheme.colors.textSecondary,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                DropdownMenu(
+                    expanded = effortExpanded,
+                    onDismissRequest = { effortExpanded = false },
+                    shape = RoundedCornerShape(16.dp),
+                    containerColor = colors.bgSecondary,
+                    tonalElevation = 0.dp,
+                ) {
+                    effortOptions.forEach { effort ->
+                        DropdownMenuItem(
+                            text = { Text(effort) },
+                            onClick = {
+                                onEffortSelect(effort)
+                                effortExpanded = false
                             }
-                        }
-                    },
-                    onClick = {
-                        onSelectModelId(model.id)
-                        expanded = false
+                        )
                     }
-                )
+                }
             }
+
+            NavigableControlRow(
+                icon = Icons.Default.Build,
+                title = "Skills",
+                subtitle = skillsSubtitle,
+                onClick = onSkillsClick,
+            )
+
+            NavigableControlRow(
+                icon = Icons.Default.Settings,
+                title = "Settings",
+                subtitle = "Open application settings.",
+                onClick = onSettingsClick,
+            )
+
+            Spacer(Modifier.height(8.dp))
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun EffortDropdown(
-    efforts: List<String>,
-    selectedEffort: String?,
-    colors: CodexColors,
+private fun ControlToggleRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
     enabled: Boolean,
-    onSelect: (String?) -> Unit,
+    onCheckedChange: (Boolean) -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    val current = selectedEffort?.takeIf { it.isNotBlank() } ?: efforts.firstOrNull().orEmpty()
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { if (enabled) expanded = !expanded }
+    val colors = CodexTheme.colors
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(enabled = enabled) { onCheckedChange(!checked) }
+                .padding(horizontal = 4.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        OutlinedTextField(
-            value = current,
-            onValueChange = {},
-            readOnly = true,
-            enabled = enabled,
-            label = { Text("Reasoning effort") },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            colors = sessionControlOutlinedTextFieldColors(colors),
-            modifier =
-                Modifier
-                    .menuAnchor(type = MenuAnchorType.PrimaryNotEditable, enabled = enabled)
-                    .fillMaxWidth()
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = colors.textSecondary,
+            modifier = Modifier.size(24.dp)
         )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            efforts.forEach { effort ->
-                DropdownMenuItem(
-                    text = { Text(effort) },
-                    onClick = {
-                        onSelect(effort)
-                        expanded = false
-                    }
-                )
-            }
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                color = colors.textPrimary,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
+        Spacer(Modifier.width(8.dp))
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
+            colors =
+                SwitchDefaults.colors(
+                    checkedThumbColor = colors.controlStrongOn,
+                    checkedTrackColor = colors.controlStrong,
+                    uncheckedThumbColor = colors.textSecondary,
+                    uncheckedTrackColor = colors.bgSecondary,
+                ),
+        )
     }
 }
 
 @Composable
-private fun sessionControlOutlinedTextFieldColors(colors: CodexColors): TextFieldColors =
-    OutlinedTextFieldDefaults.colors(
-        focusedBorderColor = colors.controlStrong,
-        focusedLabelColor = colors.controlStrong,
-        focusedTrailingIconColor = colors.controlStrong,
-        cursorColor = colors.controlStrong,
-        unfocusedBorderColor = colors.borderDefault,
-        unfocusedLabelColor = colors.textSecondary,
-        unfocusedTrailingIconColor = colors.textSecondary,
-        focusedTextColor = colors.textPrimary,
-        unfocusedTextColor = colors.textPrimary,
-        disabledTextColor = colors.textSecondary,
-    )
+private fun ControlDropdownRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    enabled: Boolean,
+    expanded: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = CodexTheme.colors
+    val iconTint =
+        if (enabled) {
+            colors.textSecondary
+        } else {
+            colors.textSecondary.copy(alpha = 0.5f)
+        }
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(enabled = enabled, onClick = onClick)
+                .padding(horizontal = 4.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = iconTint,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                color = if (enabled) colors.textPrimary else colors.textSecondary,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Icon(
+            imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+            contentDescription = null,
+            tint = iconTint,
+        )
+    }
+}
+
+@Composable
+private fun NavigableControlRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    val colors = CodexTheme.colors
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 4.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = colors.textSecondary,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                color = colors.textPrimary,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = colors.textSecondary,
+        )
+    }
+}
 
 @Composable
 private fun ConnectionDot(status: ConnectionStatus) {
@@ -1623,10 +1616,20 @@ fun ChatInput(
                             }
                             selectedModelLabel
                                 ?.takeIf { it.isNotBlank() }
-                                ?.let { StaticMetaChip(label = it) }
+                                ?.let {
+                                    StaticMetaChip(
+                                        label = it,
+                                        icon = Icons.Default.Memory,
+                                    )
+                                }
                             selectedEffortLabel
                                 ?.takeIf { it.isNotBlank() }
-                                ?.let { StaticMetaChip(label = it) }
+                                ?.let {
+                                    StaticMetaChip(
+                                        label = it,
+                                        icon = Icons.Default.Psychology,
+                                    )
+                                }
                         }
                         Spacer(Modifier.height(4.dp))
                     }
@@ -1705,11 +1708,18 @@ private fun PlanModeChip(enabled: Boolean, onClose: () -> Unit) {
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            modifier = Modifier.padding(start = 10.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
         ) {
+            Icon(
+                imageVector = Icons.Default.AccountTree,
+                contentDescription = null,
+                tint = colors.chipAccent,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(6.dp))
             Text(
                 text = "Plan",
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.bodyLarge,
                 color = colors.chipAccent,
             )
             Spacer(Modifier.width(4.dp))
@@ -1733,20 +1743,31 @@ private fun PlanModeChip(enabled: Boolean, onClose: () -> Unit) {
 }
 
 @Composable
-private fun StaticMetaChip(label: String) {
+private fun StaticMetaChip(label: String, icon: ImageVector) {
     val colors = CodexTheme.colors
     Surface(
         color = colors.chipAccentActiveBackground,
         shape = RoundedCornerShape(999.dp),
     ) {
-        Text(
-            text = label,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            style = MaterialTheme.typography.labelLarge,
-            color = colors.chipAccent,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = colors.chipAccent,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = colors.chipAccent,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

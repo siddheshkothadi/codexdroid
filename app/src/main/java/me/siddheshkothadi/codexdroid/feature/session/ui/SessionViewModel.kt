@@ -155,6 +155,65 @@ class SessionViewModel @Inject constructor(
         _uiState.update { it.copy(planModeEnabled = enabled) }
     }
 
+    fun applyModelSelection(modelId: String?) {
+        val normalizedModel = modelId?.takeIf { it.isNotBlank() }
+        val models = _uiState.value.models
+        val nextModel =
+            normalizedModel?.let { id ->
+                models.firstOrNull { option -> option.id == id || option.model == id }
+            }
+        val supportedEfforts =
+            nextModel?.supportedReasoningEfforts
+                ?.map { it.reasoningEffort }
+                ?.filter { it.isNotBlank() }
+                .orEmpty()
+        val defaultEffort = nextModel?.defaultReasoningEffort?.takeIf { it.isNotBlank() }
+        val currentEffort = _uiState.value.selectedEffort?.takeIf { it.isNotBlank() }
+        val nextEffort =
+            when {
+                currentEffort != null &&
+                    (supportedEfforts.isEmpty() || currentEffort in supportedEfforts) ->
+                    currentEffort
+                defaultEffort != null &&
+                    (supportedEfforts.isEmpty() || defaultEffort in supportedEfforts) ->
+                    defaultEffort
+                supportedEfforts.isNotEmpty() ->
+                    supportedEfforts.first()
+                else -> null
+            }
+
+        _uiState.update {
+            it.copy(
+                selectedModelId = normalizedModel,
+                selectedEffort = nextEffort,
+            )
+        }
+        val modelSlug = resolveModelSlug(modelId = normalizedModel)
+        persistControlPreferences(model = modelSlug, effort = nextEffort)
+    }
+
+    fun applyEffortSelection(effort: String?) {
+        val normalizedEffort = effort?.takeIf { it.isNotBlank() }
+        val selectedModel =
+            _uiState.value.selectedModelId?.let { id ->
+                _uiState.value.models.firstOrNull { option -> option.id == id || option.model == id }
+            }
+        val supportedEfforts =
+            selectedModel?.supportedReasoningEfforts
+                ?.map { it.reasoningEffort }
+                ?.filter { it.isNotBlank() }
+                .orEmpty()
+        val nextEffort =
+            when {
+                normalizedEffort == null -> null
+                supportedEfforts.isEmpty() || normalizedEffort in supportedEfforts -> normalizedEffort
+                else -> _uiState.value.selectedEffort?.takeIf { it.isNotBlank() }
+            }
+        _uiState.update { it.copy(selectedEffort = nextEffort) }
+        val modelSlug = resolveModelSlug(_uiState.value.selectedModelId)
+        persistControlPreferences(model = modelSlug, effort = nextEffort)
+    }
+
     fun saveControlsSelection(modelId: String?, effort: String?, planModeEnabled: Boolean) {
         val normalizedModel = modelId?.takeIf { it.isNotBlank() }
         val normalizedEffort = effort?.takeIf { it.isNotBlank() }

@@ -18,7 +18,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -52,6 +51,7 @@ import dev.snipme.highlights.model.ColorHighlight
 import dev.snipme.highlights.model.SyntaxLanguage
 import me.siddheshkothadi.codexdroid.codex.*
 import me.siddheshkothadi.codexdroid.ui.theme.CodexTheme
+
 @Composable
 fun ThreadItemBubble(item: ThreadItem) {
     val isUser = item is ThreadItem.UserMessage
@@ -580,11 +580,8 @@ private fun CodexMarkdown(markdown: String, modifier: Modifier = Modifier) {
     val colors = CodexTheme.colors
     val typography = MaterialTheme.typography
     val baseTextStyle = LocalTextStyle.current.copy(color = colors.textPrimary)
-    val markdownLinkColor = lerp(colors.accentUi, colors.accentPrimary, 0.45f)
-    val highlightsBuilder =
-        remember(isSystemInDarkTheme()) {
-            Highlights.Builder()
-        }
+    
+    val highlightsBuilder = remember { Highlights.Builder() }
     val markdownComponents =
         remember(highlightsBuilder) {
             codexMarkdownComponents(highlightsBuilder)
@@ -598,7 +595,7 @@ private fun CodexMarkdown(markdown: String, modifier: Modifier = Modifier) {
                 text = colors.textPrimary,
                 codeText = colors.textPrimary,
                 inlineCodeText = colors.textPrimary,
-                linkText = markdownLinkColor,
+                linkText = colors.textPrimary,
                 codeBackground = Color.Transparent,
                 inlineCodeBackground = Color.Transparent,
                 dividerColor = colors.borderDefault,
@@ -623,7 +620,7 @@ private fun CodexMarkdown(markdown: String, modifier: Modifier = Modifier) {
                     ),
                 link =
                     baseTextStyle.copy(
-                        color = markdownLinkColor,
+                        color = colors.textPrimary,
                         textDecoration = TextDecoration.Underline,
                         fontWeight = FontWeight.Medium,
                     ),
@@ -800,4 +797,3 @@ private fun trimCommandRunOutput(output: String, topLines: Int = 5, bottomLines:
         append(lines.takeLast(bottomLines).joinToString("\n"))
     }
 }
-

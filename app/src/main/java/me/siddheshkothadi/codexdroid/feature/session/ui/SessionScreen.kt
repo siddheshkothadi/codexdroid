@@ -6,7 +6,6 @@ import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,6 +49,7 @@ import kotlinx.coroutines.launch
 import me.siddheshkothadi.codexdroid.codex.*
 import me.siddheshkothadi.codexdroid.feature.shared.ui.components.CodexDroidDrawerContent
 import me.siddheshkothadi.codexdroid.feature.history.ui.HistoryUiState
+import me.siddheshkothadi.codexdroid.ui.theme.CodexColors
 import me.siddheshkothadi.codexdroid.ui.theme.CodexTheme
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -512,9 +512,8 @@ private fun SessionTopBar(
     borderColor: Color
 ) {
     val colors = CodexTheme.colors
-    val isDark = isSystemInDarkTheme()
-    val appBarButtonBackground = if (isDark) colors.bgSecondary else colors.inputButtonBackground
-    val appBarButtonIcon = if (isDark) colors.textSecondary else colors.inputButtonContent
+    val appBarButtonBackground = colors.neutralIconButtonBackground
+    val appBarButtonIcon = colors.neutralIconButtonContent
 
     CenterAlignedTopAppBar(
         title = {
@@ -522,7 +521,11 @@ private fun SessionTopBar(
                 ConnectionDot(connectionStatus)
                 Spacer(Modifier.width(8.dp))
                 if (isSyncing) {
-                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
+                        color = colors.textSecondary,
+                    )
                     Spacer(Modifier.width(8.dp))
                 }
                 Text(text = title, style = MaterialTheme.typography.titleLarge)
@@ -576,6 +579,7 @@ private fun ControlsBottomSheet(
     onDismiss: () -> Unit,
     onSave: (String?, String?, Boolean) -> Unit,
 ) {
+    val colors = CodexTheme.colors
     val models = uiState.models
     var draftModelId by rememberSaveable(uiState.selectedModelId) { mutableStateOf(uiState.selectedModelId) }
     var draftEffort by rememberSaveable(uiState.selectedEffort) { mutableStateOf(uiState.selectedEffort) }
@@ -604,17 +608,25 @@ private fun ControlsBottomSheet(
     var tabIndex by rememberSaveable { mutableIntStateOf(0) }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = CodexTheme.colors.bgPrimary,
+        containerColor = colors.bgPrimary,
         tonalElevation = 0.dp,
     ) {
         Column(Modifier.fillMaxWidth()) {
-            Surface(color = CodexTheme.colors.bgPrimary) {
+            Surface(color = colors.bgPrimary) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Session controls", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                        TextButton(
+                        Button(
                             onClick = { onSave(normalizedDraftModel, normalizedDraftEffort, draftPlanModeEnabled) },
                             enabled = !uiState.isControlsSyncing && isDirty,
+                            shape = RoundedCornerShape(12.dp),
+                            colors =
+                                ButtonDefaults.buttonColors(
+                                    containerColor = colors.monochromeActionBackground,
+                                    contentColor = colors.monochromeActionContent,
+                                    disabledContainerColor = colors.monochromeActionBackground.copy(alpha = 0.45f),
+                                    disabledContentColor = colors.monochromeActionContent.copy(alpha = 0.7f),
+                                ),
                         ) { Text("Save") }
                     }
                     if (uiState.isControlsSyncing) {
@@ -626,7 +638,7 @@ private fun ControlsBottomSheet(
                         Text(
                             text = uiState.controlsError!!,
                             style = MaterialTheme.typography.bodySmall,
-                            color = CodexTheme.colors.accentError
+                            color = colors.accentError
                         )
                     }
 
@@ -640,12 +652,12 @@ private fun ControlsBottomSheet(
                             Text(
                                 text = "Plan mode",
                                 style = MaterialTheme.typography.titleSmall,
-                                color = CodexTheme.colors.textPrimary,
+                                color = colors.textPrimary,
                             )
                             Text(
                                 text = "Ask Codex to explicitly plan steps before execution.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = CodexTheme.colors.textSecondary,
+                                color = colors.textSecondary,
                             )
                         }
                         Spacer(Modifier.width(8.dp))
@@ -653,26 +665,38 @@ private fun ControlsBottomSheet(
                             checked = draftPlanModeEnabled,
                             onCheckedChange = { draftPlanModeEnabled = it },
                             enabled = !uiState.isControlsSyncing,
+                            colors =
+                                SwitchDefaults.colors(
+                                    checkedThumbColor = colors.controlStrongOn,
+                                    checkedTrackColor = colors.controlStrong,
+                                    uncheckedThumbColor = colors.textSecondary,
+                                    uncheckedTrackColor = colors.bgSecondary,
+                                ),
                         )
                     }
                     Spacer(Modifier.height(12.dp))
                     TabRow(
                         selectedTabIndex = tabIndex,
-                        containerColor = CodexTheme.colors.bgPrimary,
-                        contentColor = CodexTheme.colors.accentUi
+                        containerColor = colors.bgPrimary,
+                        contentColor = colors.controlStrong,
+                        indicator = {
+                            TabRowDefaults.PrimaryIndicator(
+                                color = colors.controlStrong
+                            )
+                        },
                     ) {
                         Tab(
                             selected = tabIndex == 0,
                             onClick = { tabIndex = 0 },
-                            selectedContentColor = CodexTheme.colors.accentUi,
-                            unselectedContentColor = CodexTheme.colors.textSecondary,
+                            selectedContentColor = colors.controlStrong,
+                            unselectedContentColor = colors.textSecondary,
                             text = { Text("Model") },
                         )
                         Tab(
                             selected = tabIndex == 1,
                             onClick = { tabIndex = 1 },
-                            selectedContentColor = CodexTheme.colors.accentUi,
-                            unselectedContentColor = CodexTheme.colors.textSecondary,
+                            selectedContentColor = colors.controlStrong,
+                            unselectedContentColor = colors.textSecondary,
                             text = { Text("Skills") },
                         )
                     }
@@ -686,6 +710,7 @@ private fun ControlsBottomSheet(
                         ModelDropdown(
                             models = models,
                             selectedModelId = draftModelId,
+                            colors = colors,
                             onSelectModelId = { nextModelId ->
                                 val normalizedNextModel = nextModelId?.takeIf { it.isNotBlank() }
                                 draftModelId = normalizedNextModel
@@ -721,6 +746,7 @@ private fun ControlsBottomSheet(
                         EffortDropdown(
                             efforts = effortOptions,
                             selectedEffort = draftEffort,
+                            colors = colors,
                             enabled = effortOptions.isNotEmpty(),
                             onSelect = { nextEffort ->
                                 draftEffort = nextEffort?.takeIf { it.isNotBlank() }
@@ -734,7 +760,7 @@ private fun ControlsBottomSheet(
                         Text(
                             text = if (uiState.isControlsSyncing) "Loading…" else "No skills found.",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = CodexTheme.colors.textSecondary,
+                            color = colors.textSecondary,
                             modifier = Modifier.padding(vertical = 16.dp)
                         )
                     } else {
@@ -755,7 +781,7 @@ private fun ControlsBottomSheet(
                                             Text(
                                                 skill.description!!,
                                                 style = MaterialTheme.typography.bodySmall,
-                                                color = CodexTheme.colors.textSecondary
+                                                color = colors.textSecondary
                                             )
                                         }
                                         if (skill.path.isNotBlank()) {
@@ -763,7 +789,7 @@ private fun ControlsBottomSheet(
                                             Text(
                                                 skill.path,
                                                 style = MaterialTheme.typography.labelSmall,
-                                                color = CodexTheme.colors.textSecondary,
+                                                color = colors.textSecondary,
                                                 maxLines = 2,
                                                 overflow = TextOverflow.Ellipsis
                                             )
@@ -785,6 +811,7 @@ private fun ControlsBottomSheet(
 private fun ModelDropdown(
     models: List<ModelOptionUi>,
     selectedModelId: String?,
+    colors: CodexColors,
     onSelectModelId: (String?) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -797,6 +824,7 @@ private fun ModelDropdown(
             enabled = models.isNotEmpty(),
             label = { Text("Model") },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            colors = sessionControlOutlinedTextFieldColors(colors),
             modifier =
                 Modifier
                     .menuAnchor(type = MenuAnchorType.PrimaryNotEditable, enabled = models.isNotEmpty())
@@ -841,6 +869,7 @@ private fun ModelDropdown(
 private fun EffortDropdown(
     efforts: List<String>,
     selectedEffort: String?,
+    colors: CodexColors,
     enabled: Boolean,
     onSelect: (String?) -> Unit,
 ) {
@@ -857,6 +886,7 @@ private fun EffortDropdown(
             enabled = enabled,
             label = { Text("Reasoning effort") },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            colors = sessionControlOutlinedTextFieldColors(colors),
             modifier =
                 Modifier
                     .menuAnchor(type = MenuAnchorType.PrimaryNotEditable, enabled = enabled)
@@ -875,6 +905,21 @@ private fun EffortDropdown(
         }
     }
 }
+
+@Composable
+private fun sessionControlOutlinedTextFieldColors(colors: CodexColors): TextFieldColors =
+    OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = colors.controlStrong,
+        focusedLabelColor = colors.controlStrong,
+        focusedTrailingIconColor = colors.controlStrong,
+        cursorColor = colors.controlStrong,
+        unfocusedBorderColor = colors.borderDefault,
+        unfocusedLabelColor = colors.textSecondary,
+        unfocusedTrailingIconColor = colors.textSecondary,
+        focusedTextColor = colors.textPrimary,
+        unfocusedTextColor = colors.textPrimary,
+        disabledTextColor = colors.textSecondary,
+    )
 
 @Composable
 private fun ConnectionDot(status: ConnectionStatus) {
@@ -955,6 +1000,10 @@ private fun MessageList(
         onScrollToTurnHandled()
     }
 
+    val colors = CodexTheme.colors
+    val buttonBackground = colors.neutralIconButtonBackground
+    val buttonIcon = colors.neutralIconButtonContent
+
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
@@ -996,15 +1045,21 @@ private fun MessageList(
         }
 
         if (showScrollToBottom) {
-            SmallFloatingActionButton(
-                onClick = { scope.launch { listState.animateScrollToItem(0) } },
+            Surface(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(16.dp),
-                containerColor = CodexTheme.colors.bgSecondary,
-                contentColor = CodexTheme.colors.textPrimary
+                    .padding(16.dp)
+                    .size(40.dp),
+                shape = CircleShape,
+                color = buttonBackground
             ) {
-                Icon(Icons.Default.ArrowDownward, contentDescription = "Scroll to bottom")
+                IconButton(onClick = { scope.launch { listState.animateScrollToItem(0) } }) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowDownward,
+                        contentDescription = "Scroll to bottom",
+                        tint = buttonIcon
+                    )
+                }
             }
         }
     }
@@ -1280,6 +1335,7 @@ private fun TurnSpeechControlRow(
     turnSpeechController: TurnTextToSpeechController,
 ) {
     val context = LocalContext.current
+    val colors = CodexTheme.colors
     val isActiveTurn = turnSpeechController.activeTurnId == entry.turnId
     val state =
         if (isActiveTurn) turnSpeechController.playbackState else TurnSpeechPlaybackState.Idle
@@ -1321,7 +1377,8 @@ private fun TurnSpeechControlRow(
             if (isSynthesizing) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(18.dp),
-                    strokeWidth = 2.dp
+                    strokeWidth = 2.dp,
+                    color = colors.textSecondary,
                 )
                 IconButton(
                     onClick = { turnSpeechController.cancelSynthesis() },
@@ -1454,7 +1511,7 @@ private fun EmptyView() {
         Icon(
             imageVector = CodexLogo,
             contentDescription = null,
-            tint = CodexTheme.colors.textPrimary.copy(alpha = if (isSystemInDarkTheme()) 0.10f else 0.06f),
+            tint = CodexTheme.colors.textPrimary.copy(alpha = CodexTheme.colors.emptyStateLogoAlpha),
             modifier = Modifier.size(180.dp),
         )
     }
@@ -1506,9 +1563,8 @@ fun ChatInput(
     onDisablePlanMode: () -> Unit,
 ) {
     val colors = CodexTheme.colors
-    val isDark = isSystemInDarkTheme()
-    val toolsButtonBackground = if (isDark) colors.bgSecondary else colors.inputButtonBackground
-    val toolsButtonIcon = if (isDark) colors.textSecondary else colors.inputButtonContent
+    val toolsButtonBackground = colors.neutralIconButtonBackground
+    val toolsButtonIcon = colors.neutralIconButtonContent
     val hasMetaChips = planModeEnabled || !selectedModelLabel.isNullOrBlank() || !selectedEffortLabel.isNullOrBlank()
     Surface(
         color = colors.bgPrimary
@@ -1719,4 +1775,3 @@ private fun computeContextLeftPercent(tokenUsage: ThreadTokenUsage?): Int? {
     val free = (100.0 - clampedUsed).coerceAtLeast(0.0)
     return free.roundToInt()
 }
-

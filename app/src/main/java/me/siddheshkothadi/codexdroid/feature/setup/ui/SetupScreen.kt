@@ -15,6 +15,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -70,6 +71,12 @@ fun SetupScreen(
                         }
                     }
                 },
+                colors = TopAppBarDefaults.largeTopAppBarColors(
+                    containerColor = colors.bgPrimary,
+                    scrolledContainerColor = colors.bgPrimary,
+                    titleContentColor = colors.textPrimary,
+                    navigationIconContentColor = colors.textPrimary,
+                ),
                 scrollBehavior = scrollBehavior
             )
         },
@@ -88,6 +95,7 @@ fun SetupScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     val canSave = url.isNotBlank() && name.isNotBlank()
+
                     Button(
                         onClick = {
                             if (!isLoading) {
@@ -102,10 +110,10 @@ fun SetupScreen(
                         shape = RoundedCornerShape(24.dp),
                         colors =
                             ButtonDefaults.buttonColors(
-                                containerColor = colors.accentAction,
-                                contentColor = colors.onAccentAction,
-                                disabledContainerColor = colors.accentAction.copy(alpha = 0.45f),
-                                disabledContentColor = colors.onAccentAction.copy(alpha = 0.7f),
+                                containerColor = colors.monochromeActionBackground,
+                                contentColor = colors.monochromeActionContent,
+                                disabledContainerColor = colors.monochromeActionBackground.copy(alpha = 0.45f),
+                                disabledContentColor = colors.monochromeActionContent.copy(alpha = 0.7f),
                             ),
                     ) {
                         if (isLoading) {
@@ -116,14 +124,14 @@ fun SetupScreen(
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(18.dp),
                                     strokeWidth = 2.dp,
-                                    color = colors.onAccentAction
+                                    color = colors.monochromeActionContent
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
                             }
                         }
                         Text(
                             text = if (isEditMode) "Update Connection" else "Connect & Save",
-                            color = colors.onAccentAction
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                         )
                     }
                 }
@@ -153,7 +161,12 @@ fun SetupScreen(
                 label = { Text("Connection Name (e.g. Local Server)") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                enabled = !isLoading
+                enabled = !isLoading,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = colors.controlStrong,
+                    unfocusedBorderColor = colors.borderDefault
+                )
             )
 
             OutlinedTextField(
@@ -162,7 +175,12 @@ fun SetupScreen(
                 label = { Text("Base URL (e.g. http://192.168.1.3:8080)") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                enabled = !isLoading
+                enabled = !isLoading,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = colors.controlStrong,
+                    unfocusedBorderColor = colors.borderDefault
+                )
             )
 
             OutlinedTextField(
@@ -174,6 +192,11 @@ fun SetupScreen(
                 enabled = !isLoading,
                 visualTransformation = if (isSecretVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = colors.controlStrong,
+                    unfocusedBorderColor = colors.borderDefault
+                ),
                 trailingIcon = {
                     val image = if (isSecretVisible)
                         Icons.Filled.Visibility
@@ -195,6 +218,11 @@ fun SetupScreen(
                 enabled = !isLoading,
                 visualTransformation = if (isSarvamApiKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = colors.controlStrong,
+                    unfocusedBorderColor = colors.borderDefault
+                ),
                 trailingIcon = {
                     val image =
                         if (isSarvamApiKeyVisible) {
@@ -219,4 +247,3 @@ fun SetupScreen(
         }
     }
 }
-

@@ -3,7 +3,6 @@ package me.siddheshkothadi.codexdroid.feature.shared.ui.components
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -12,7 +11,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandLess
@@ -84,11 +82,8 @@ fun CodexDroidDrawerContent(
                         var renamingThreadId by rememberSaveable { mutableStateOf<String?>(null) }
                         var renameDraft by rememberSaveable { mutableStateOf("") }
                         var deleteCwdTarget by rememberSaveable { mutableStateOf<String?>(null) }
-                        val isDark = isSystemInDarkTheme()
-                        val actionButtonBackground =
-                            if (isDark) CodexTheme.colors.bgSecondary else CodexTheme.colors.inputButtonBackground
-                        val actionButtonIcon =
-                            if (isDark) CodexTheme.colors.textSecondary else CodexTheme.colors.inputButtonContent
+                        val actionButtonBackground = CodexTheme.colors.neutralIconButtonBackground
+                        val actionButtonIcon = CodexTheme.colors.neutralIconButtonContent
 
                         val grouped =
                             remember(historyState.threads) {
@@ -207,7 +202,7 @@ fun CodexDroidDrawerContent(
                                             Icon(
                                                 imageVector = Icons.Default.Folder,
                                                 contentDescription = null,
-                                                tint = CodexTheme.colors.accentUi.copy(alpha = 0.78f),
+                                                tint = CodexTheme.colors.iconPrimary,
                                                 modifier = Modifier.size(24.dp)
                                             )
                                             Spacer(Modifier.width(10.dp))
@@ -391,7 +386,8 @@ fun CodexDroidDrawerContent(
                                                             if (hasRunningTurn) {
                                                                 CircularProgressIndicator(
                                                                     modifier = Modifier.size(14.dp),
-                                                                    strokeWidth = 2.dp
+                                                                    strokeWidth = 2.dp,
+                                                                    color = CodexTheme.colors.textSecondary,
                                                                 )
                                                             }
                                                         }
@@ -516,143 +512,147 @@ fun ConnectionSelector(
     var expanded by remember { mutableStateOf(false) }
     val activeConnection = connections.firstOrNull()
     var confirmDelete by remember { mutableStateOf<Connection?>(null) }
+    val colors = CodexTheme.colors
+    val actionButtonBackground = colors.neutralIconButtonBackground
+    val actionButtonIcon = colors.neutralIconButtonContent
 
     Column(modifier = modifier.fillMaxWidth()) {
-        Text(
-            text = "Active Connection",
-            style = MaterialTheme.typography.labelSmall,
-            color = CodexTheme.colors.textSecondary
-        )
-        
-        Box {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { expanded = true }
+        Surface(
+            modifier = Modifier.fillMaxWidth().clickable { expanded = true },
+            shape = RoundedCornerShape(16.dp),
+            color = colors.bgSecondary,
+        ) {
+            Box(modifier = Modifier.padding(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        ConnectionDot(connectionStatus)
-                        Spacer(Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = activeConnection?.name ?: "No connection",
-                            style = MaterialTheme.typography.bodyLarge,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            text = "Active Connection",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.textSecondary
                         )
-                        if (isSyncing) {
+                        Row(
+                            modifier = Modifier.padding(top = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            ConnectionDot(connectionStatus)
                             Spacer(Modifier.width(8.dp))
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(14.dp),
-                                strokeWidth = 2.dp
+                            Text(
+                                text = activeConnection?.name ?: "No connection",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = colors.textPrimary,
                             )
+                            if (isSyncing) {
+                                Spacer(Modifier.width(8.dp))
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp,
+                                    color = colors.textSecondary,
+                                )
+                            }
                         }
                     }
-                    Text(
-                        text = activeConnection?.baseUrl ?: "Configure a server",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = CodexTheme.colors.textSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (activeConnection != null) {
+                            Surface(
+                                modifier = Modifier.size(32.dp),
+                                shape = CircleShape,
+                                color = actionButtonBackground
+                            ) {
+                                IconButton(onClick = { onEditClick(activeConnection.id) }) {
+                                    Icon(
+                                        Icons.Default.Edit,
+                                        contentDescription = "Edit Connection",
+                                        tint = actionButtonIcon
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Surface(
+                            modifier = Modifier.size(32.dp),
+                            shape = CircleShape,
+                            color = actionButtonBackground
+                        ) {
+                            IconButton(onClick = onSetupClick) {
+                                Icon(
+                                    Icons.Default.Add,
+                                    contentDescription = "Add connection",
+                                    tint = actionButtonIcon
+                                )
+                            }
+                        }
+                    }
                 }
-                
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (activeConnection != null) {
-                        Surface(
-                            modifier = Modifier.size(32.dp),
-                            shape = CircleShape,
-                            color = CodexTheme.colors.bgSecondary
-                        ) {
-                            IconButton(onClick = onSettingsClick) {
-                                Icon(
-                                    Icons.Default.Settings,
-                                    contentDescription = "Settings",
-                                    modifier = Modifier.size(16.dp),
-                                    tint = CodexTheme.colors.textSecondary
-                                )
+
+                DropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                    modifier = Modifier.fillMaxWidth(0.8f),
+                    containerColor = colors.bgSecondary,
+                ) {
+                    connections.forEach { connection ->
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        // Only show status for active connection.
+                                        if (connection.id == activeConnection?.id) {
+                                            ConnectionDot(connectionStatus)
+                                            Spacer(Modifier.width(8.dp))
+                                        }
+                                        Text(connection.name)
+                                    }
+                                }
+                            },
+                            trailingIcon = {
+                                IconButton(
+                                    onClick = {
+                                        confirmDelete = connection
+                                        expanded = false
+                                    }
+                                ) {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = "Delete connection",
+                                        tint = colors.accentError
+                                    )
+                                }
+                            },
+                            onClick = {
+                                onConnectionSelect(connection)
+                                expanded = false
                             }
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Surface(
-                            modifier = Modifier.size(32.dp),
-                            shape = CircleShape,
-                            color = CodexTheme.colors.bgSecondary
-                        ) {
-                            IconButton(onClick = { onEditClick(activeConnection.id) }) {
-                                Icon(
-                                    Icons.Default.Edit,
-                                    contentDescription = "Edit Connection",
-                                    modifier = Modifier.size(16.dp),
-                                    tint = CodexTheme.colors.textSecondary
-                                )
-                            }
-                        }
-                        Spacer(Modifier.width(8.dp))
-                    }
-                    IconButton(onClick = { expanded = true }, modifier = Modifier.size(24.dp)) {
-                        Icon(Icons.Default.ArrowDropDown, contentDescription = "Switch connection")
+                        )
                     }
                 }
             }
+        }
 
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false },
-                modifier = Modifier.fillMaxWidth(0.8f)
+        Spacer(Modifier.height(8.dp))
+        Surface(
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onSettingsClick),
+            shape = RoundedCornerShape(16.dp),
+            color = colors.bgSecondary,
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                connections.forEach { connection ->
-                    DropdownMenuItem(
-                        text = {
-                            Column {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    // Only show status for active connection.
-                                    if (connection.id == activeConnection?.id) {
-                                        ConnectionDot(connectionStatus)
-                                        Spacer(Modifier.width(8.dp))
-                                    }
-                                    Text(connection.name)
-                                }
-                                Text(
-                                    connection.baseUrl,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = CodexTheme.colors.textSecondary
-                                )
-                            }
-                        },
-                        trailingIcon = {
-                            IconButton(
-                                onClick = {
-                                    confirmDelete = connection
-                                    expanded = false
-                                }
-                            ) {
-                                Icon(
-                                    Icons.Default.Delete,
-                                    contentDescription = "Delete connection",
-                                    tint = CodexTheme.colors.accentError
-                                )
-                            }
-                        },
-                        onClick = {
-                            onConnectionSelect(connection)
-                            expanded = false
-                        }
-                    )
-                }
-                HorizontalDivider()
-                DropdownMenuItem(
-                    text = { Text("Add new connection") },
-                    leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                    onClick = {
-                        onSetupClick()
-                        expanded = false
-                    }
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = null,
+                    tint = colors.textSecondary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Settings",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textPrimary,
                 )
             }
         }
@@ -782,4 +782,3 @@ private fun DrawerSearchField(
             )
     )
 }
-

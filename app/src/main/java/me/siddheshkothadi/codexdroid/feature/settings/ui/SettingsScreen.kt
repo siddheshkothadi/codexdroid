@@ -20,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -33,6 +34,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -50,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -152,8 +155,8 @@ fun SettingsScreen(
                 onValueChangeFinished = { viewModel.onPaceChanged(paceDraft) },
                 colors =
                     SliderDefaults.colors(
-                        thumbColor = colors.accentAction,
-                        activeTrackColor = colors.accentAction,
+                        thumbColor = colors.controlStrong,
+                        activeTrackColor = colors.controlStrong,
                         inactiveTrackColor = colors.borderDefault,
                     ),
             )
@@ -170,8 +173,8 @@ fun SettingsScreen(
                 onValueChangeFinished = { viewModel.onTemperatureChanged(temperatureDraft) },
                 colors =
                     SliderDefaults.colors(
-                        thumbColor = colors.accentAction,
-                        activeTrackColor = colors.accentAction,
+                        thumbColor = colors.controlStrong,
+                        activeTrackColor = colors.controlStrong,
                         inactiveTrackColor = colors.borderDefault,
                     ),
             )
@@ -216,7 +219,7 @@ fun SettingsScreen(
 
             Text(
                 text = "Codex Features",
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 color = colors.textPrimary,
                 modifier = Modifier.padding(top = 8.dp),
             )
@@ -231,6 +234,10 @@ fun SettingsScreen(
             OutlinedButton(
                 onClick = { viewModel.refreshCodexFeatures() },
                 enabled = uiState.activeConnectionName != null && !uiState.featuresLoading,
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = colors.monochromeActionBackground
+                )
             ) {
                 Text("Refresh features")
             }
@@ -340,6 +347,12 @@ private fun FeatureToggleRow(
             checked = feature.enabled,
             enabled = !isUpdating,
             onCheckedChange = { onToggle() },
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = colors.controlStrongOn,
+                checkedTrackColor = colors.controlStrong,
+                uncheckedThumbColor = colors.textSecondary,
+                uncheckedTrackColor = colors.bgSecondary
+            )
         )
     }
 }

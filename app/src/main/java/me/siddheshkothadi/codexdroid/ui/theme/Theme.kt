@@ -28,11 +28,11 @@ private fun CodexColors.toMaterialColorScheme(
         if (darkTheme) darkColorScheme() else lightColorScheme()
     val inverseColors = if (darkTheme) LightCodexColors else DarkCodexColors
     return base.copy(
-        primary = accentUi,
-        onPrimary = onAccentAction,
+        primary = controlStrong,
+        onPrimary = controlStrongOn,
         primaryContainer = bgSecondary,
         onPrimaryContainer = textPrimary,
-        inversePrimary = accentUi,
+        inversePrimary = controlStrong,
         secondary = textSecondary,
         onSecondary = textInverted,
         secondaryContainer = bgTertiary,
@@ -47,7 +47,7 @@ private fun CodexColors.toMaterialColorScheme(
         onSurface = textPrimary,
         surfaceVariant = bgSecondary,
         onSurfaceVariant = textSecondary,
-        surfaceTint = accentUi,
+        surfaceTint = controlStrong,
         inverseSurface = inverseColors.bgPrimary,
         inverseOnSurface = inverseColors.textPrimary,
         error = accentError,

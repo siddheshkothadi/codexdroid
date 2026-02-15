@@ -55,8 +55,13 @@ data class CodexColors(
     val chipAccentActiveBackground: Color,
     val inputFieldBackground: Color,
     val inputFieldBorder: Color,
-    val inputButtonBackground: Color,
-    val inputButtonContent: Color,
+    val neutralIconButtonBackground: Color,
+    val neutralIconButtonContent: Color,
+    val monochromeActionBackground: Color,
+    val monochromeActionContent: Color,
+    val controlStrong: Color,
+    val controlStrongOn: Color,
+    val emptyStateLogoAlpha: Float,
 )
 
 internal val LightCodexColors =
@@ -88,8 +93,13 @@ internal val LightCodexColors =
         chipAccentActiveBackground = Color(0xFFEBF4FF),
         inputFieldBackground = Color(0xFFFFFFFF),
         inputFieldBorder = Color(0x26000000),
-        inputButtonBackground = Color(0xFFFFFFFF),
-        inputButtonContent = Color(0xFF0D0D0D),
+        neutralIconButtonBackground = Color(0xFFFFFFFF),
+        neutralIconButtonContent = Color(0xFF0D0D0D),
+        monochromeActionBackground = Color(0xFF000000),
+        monochromeActionContent = Color(0xFFFFFFFF),
+        controlStrong = Color(0xFF000000),
+        controlStrongOn = Color(0xFFFFFFFF),
+        emptyStateLogoAlpha = 0.06f,
     )
 
 internal val DarkCodexColors =
@@ -121,6 +131,11 @@ internal val DarkCodexColors =
         chipAccentActiveBackground = Color(0xFF414141),
         inputFieldBackground = Color(0xFF303030),
         inputFieldBorder = Color(0x33FFFFFF),
-        inputButtonBackground = PurpleScale.Purple500,
-        inputButtonContent = PurpleScale.Purple25,
+        neutralIconButtonBackground = Color(0xFF303030),
+        neutralIconButtonContent = Color(0xFFCDCDCD),
+        monochromeActionBackground = Color(0xFFFFFFFF),
+        monochromeActionContent = Color(0xFF000000),
+        controlStrong = Color(0xFFFFFFFF),
+        controlStrongOn = Color(0xFF000000),
+        emptyStateLogoAlpha = 0.10f,
     )

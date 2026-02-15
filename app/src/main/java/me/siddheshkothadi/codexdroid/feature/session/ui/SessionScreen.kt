@@ -1524,18 +1524,22 @@ fun ChatInput(
                             }
                             selectedModelLabel
                                 ?.takeIf { it.isNotBlank() }
-                                ?.let { StaticMetaChip(label = "Model: $it") }
+                                ?.let { StaticMetaChip(label = it) }
                             selectedEffortLabel
                                 ?.takeIf { it.isNotBlank() }
-                                ?.let { StaticMetaChip(label = "Reasoning: $it") }
+                                ?.let { StaticMetaChip(label = it) }
                         }
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(4.dp))
                     }
 
                     TextField(
                         value = text,
                         onValueChange = onTextChange,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp),
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 40.dp)
+                                .offset(x = (-6).dp),
                         placeholder = { Text("Ask something", color = colors.textSecondary) },
                         maxLines = 5,
                         enabled = enabled,
@@ -1599,27 +1603,30 @@ private fun PlanModeChip(enabled: Boolean, onClose: () -> Unit) {
     Surface(
         color = colors.chipAccentActiveBackground,
         shape = RoundedCornerShape(999.dp),
-        modifier = Modifier.border(1.dp, colors.chipAccent.copy(alpha = 0.4f), RoundedCornerShape(999.dp)),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(start = 10.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
         ) {
             Text(
-                text = "Plan mode",
-                style = MaterialTheme.typography.labelMedium,
+                text = "Plan",
+                style = MaterialTheme.typography.labelLarge,
                 color = colors.chipAccent,
             )
-            IconButton(
-                onClick = onClose,
-                enabled = enabled,
-                modifier = Modifier.size(26.dp),
+            Spacer(Modifier.width(4.dp))
+            Box(
+                modifier =
+                    Modifier
+                        .size(16.dp)
+                        .clip(CircleShape)
+                        .clickable(enabled = enabled, onClick = onClose),
+                contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = Icons.Default.Close,
                     contentDescription = "Disable plan mode",
                     tint = colors.chipAccent,
-                    modifier = Modifier.size(14.dp),
+                    modifier = Modifier.size(16.dp),
                 )
             }
         }
@@ -1632,12 +1639,11 @@ private fun StaticMetaChip(label: String) {
     Surface(
         color = colors.chipAccentActiveBackground,
         shape = RoundedCornerShape(999.dp),
-        modifier = Modifier.border(1.dp, colors.chipAccent.copy(alpha = 0.3f), RoundedCornerShape(999.dp)),
     ) {
         Text(
             text = label,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            style = MaterialTheme.typography.labelMedium,
+            style = MaterialTheme.typography.labelLarge,
             color = colors.chipAccent,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

@@ -40,6 +40,7 @@ data class UserInputQuestion(
     val id: String,
     val header: String = "",
     val question: String = "",
+    val isOther: Boolean = false,
     val options: List<UserInputOption> = emptyList(),
 )
 
@@ -78,35 +79,41 @@ object PendingRequestParser {
 
     private fun parseUserInput(request: ServerRequest): UserInputPendingRequest? {
         val params = request.params as? JsonObject ?: return null
-        val threadId = params["threadId"]?.jsonPrimitive?.content
-        val turnId = params["turnId"]?.jsonPrimitive?.content
-        val itemId = params["itemId"]?.jsonPrimitive?.content
+        val threadId = readString(params, "threadId", "thread_id").takeIf { it.isNotBlank() }
+        val turnId = readString(params, "turnId", "turn_id").takeIf { it.isNotBlank() }
+        val itemId = readString(params, "itemId", "item_id").takeIf { it.isNotBlank() }
         val questionsRaw = params["questions"] as? JsonArray
         val questions =
             questionsRaw
                 ?.jsonArray
                 ?.mapNotNull { entry ->
                     val obj = entry as? JsonObject ?: return@mapNotNull null
-                    val id = obj["id"]?.jsonPrimitive?.content?.trim().orEmpty()
+                    val id = readString(obj, "id")
                     if (id.isBlank()) return@mapNotNull null
-                    val header = obj["header"]?.jsonPrimitive?.content?.trim().orEmpty()
-                    val question = obj["question"]?.jsonPrimitive?.content?.trim().orEmpty()
+                    val header = readString(obj, "header")
+                    val question = readString(obj, "question")
                     val optionsRaw = obj["options"] as? JsonArray
                     val options =
                         optionsRaw
                             ?.jsonArray
                             ?.mapNotNull { opt ->
                                 val o = opt as? JsonObject ?: return@mapNotNull null
-                                val label = o["label"]?.jsonPrimitive?.content?.trim().orEmpty()
-                                val description = o["description"]?.jsonPrimitive?.content?.trim().orEmpty()
+                                val label = readString(o, "label")
+                                val description = readString(o, "description")
                                 if (label.isBlank() && description.isBlank()) return@mapNotNull null
                                 UserInputOption(label = label, description = description)
                             }
                             .orEmpty()
-                    UserInputQuestion(id = id, header = header, question = question, options = options)
+                    val isOther = readBoolean(obj, "isOther", "is_other")
+                    UserInputQuestion(
+                        id = id,
+                        header = header,
+                        question = question,
+                        isOther = isOther,
+                        options = options,
+                    )
                 }
                 .orEmpty()
-                .filter { it.options.isNotEmpty() }
 
         if (questions.isEmpty()) return null
 
@@ -117,5 +124,24 @@ object PendingRequestParser {
             itemId = itemId,
             questions = questions,
         )
+    }
+
+    private fun readString(obj: JsonObject, vararg keys: String): String {
+        return keys.firstNotNullOfOrNull { key ->
+            runCatching { obj[key]?.jsonPrimitive?.content?.trim() }.getOrNull()?.takeIf { it.isNotEmpty() }
+        }.orEmpty()
+    }
+
+    private fun readBoolean(obj: JsonObject, vararg keys: String): Boolean {
+        keys.forEach { key ->
+            val value = runCatching { obj[key]?.jsonPrimitive?.content?.trim()?.lowercase() }.getOrNull() ?: return@forEach
+            when (value) {
+                "true" -> return true
+                "false" -> return false
+                "1" -> return true
+                "0" -> return false
+            }
+        }
+        return false
     }
 }

@@ -61,12 +61,35 @@ class CodexSessionRemoteDataSource @Inject constructor(
         return apiService.listModels(baseUrl, secret)
     }
 
+    suspend fun listExperimentalFeatures(
+        baseUrl: String,
+        secret: String?,
+        cursor: String?,
+        limit: Int?,
+    ): CodexResponse<JsonElement> {
+        return apiService.listExperimentalFeatures(
+            baseUrl = baseUrl,
+            secret = secret,
+            cursor = cursor,
+            limit = limit,
+        )
+    }
+
     suspend fun listSkills(baseUrl: String, secret: String?, cwd: String?): CodexResponse<JsonElement> {
         return apiService.listSkills(baseUrl, secret, cwd)
     }
 
     suspend fun readConfig(baseUrl: String, secret: String?): CodexResponse<JsonElement> {
         return apiService.readConfig(baseUrl, secret)
+    }
+
+    suspend fun writeConfigValue(
+        baseUrl: String,
+        secret: String?,
+        key: String,
+        value: JsonElement,
+    ): CodexResponse<JsonElement> {
+        return apiService.writeConfigValue(baseUrl, secret, key, value)
     }
 
     suspend fun interruptTurn(

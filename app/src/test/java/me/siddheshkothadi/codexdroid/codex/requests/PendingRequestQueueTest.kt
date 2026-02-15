@@ -69,6 +69,7 @@ class PendingRequestQueueTest {
         assertEquals("thread-1", parsed.threadId)
         assertEquals(1, parsed.questions.size)
         assertEquals("merge_policy", parsed.questions.first().id)
+        assertEquals(false, parsed.questions.first().isOther)
     }
 
     @Test
@@ -101,6 +102,42 @@ class PendingRequestQueueTest {
 
         assertTrue(parsed is UnknownPendingRequest)
         assertEquals(44L, parsed.requestId)
+    }
+
+    @Test
+    fun parseUserInput_keepsOptionlessQuestions_andOtherFlag() {
+        val request =
+            ServerRequest(
+                method = "item/tool/requestUserInput",
+                id = 55,
+                params =
+                    buildJsonObject {
+                        put("thread_id", "thread-2")
+                        put(
+                            "questions",
+                            buildJsonArray {
+                                add(
+                                    buildJsonObject {
+                                        put("id", "notes")
+                                        put("header", "Notes")
+                                        put("question", "Share any details")
+                                        put("is_other", true)
+                                    }
+                                )
+                            }
+                        )
+                    },
+            )
+
+        val parsed = PendingRequestParser.parse(request)
+
+        assertTrue(parsed is UserInputPendingRequest)
+        parsed as UserInputPendingRequest
+        assertEquals("thread-2", parsed.threadId)
+        assertEquals(1, parsed.questions.size)
+        assertEquals("notes", parsed.questions.first().id)
+        assertEquals(true, parsed.questions.first().isOther)
+        assertTrue(parsed.questions.first().options.isEmpty())
     }
 
     @Test

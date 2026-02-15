@@ -115,9 +115,43 @@ class CodexApiService @Inject constructor(
         return client.send<EmptyParams, JsonElement>(CodexRequest("model/list", params = EmptyParams))
     }
 
+    suspend fun listExperimentalFeatures(
+        baseUrl: String,
+        secret: String?,
+        cursor: String?,
+        limit: Int?,
+    ): CodexResponse<JsonElement> {
+        val client = clientManager.get(baseUrl, secret)
+        val params =
+            buildJsonObject {
+                cursor?.let { put("cursor", it) }
+                limit?.let { put("limit", it) }
+            }
+        return client.send<JsonObject, JsonElement>(
+            CodexRequest("experimentalFeature/list", params = params),
+        )
+    }
+
     suspend fun readConfig(baseUrl: String, secret: String?): CodexResponse<JsonElement> {
         val client = clientManager.get(baseUrl, secret)
         return client.send<EmptyParams, JsonElement>(CodexRequest("config/read", params = EmptyParams))
+    }
+
+    suspend fun writeConfigValue(
+        baseUrl: String,
+        secret: String?,
+        key: String,
+        value: JsonElement,
+    ): CodexResponse<JsonElement> {
+        val client = clientManager.get(baseUrl, secret)
+        val params =
+            buildJsonObject {
+                put("key", key)
+                put("value", value)
+            }
+        return client.send<JsonObject, JsonElement>(
+            CodexRequest("config/value/write", params = params),
+        )
     }
 
     suspend fun listSkills(baseUrl: String, secret: String?, cwd: String?): CodexResponse<JsonElement> {

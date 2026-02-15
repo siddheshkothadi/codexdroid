@@ -54,12 +54,40 @@ class CodexSessionRepositoryImpl @Inject constructor(
         return remoteDataSource.listModels(baseUrl, secret)
     }
 
+    override suspend fun listExperimentalFeatures(
+        baseUrl: String,
+        secret: String?,
+        cursor: String?,
+        limit: Int?,
+    ): CodexResponse<JsonElement> {
+        return remoteDataSource.listExperimentalFeatures(
+            baseUrl = baseUrl,
+            secret = secret,
+            cursor = cursor,
+            limit = limit,
+        )
+    }
+
     override suspend fun listSkills(baseUrl: String, secret: String?, cwd: String?): CodexResponse<JsonElement> {
         return remoteDataSource.listSkills(baseUrl, secret, cwd)
     }
 
     override suspend fun readConfig(baseUrl: String, secret: String?): CodexResponse<JsonElement> {
         return remoteDataSource.readConfig(baseUrl, secret)
+    }
+
+    override suspend fun writeConfigValue(
+        baseUrl: String,
+        secret: String?,
+        key: String,
+        value: JsonElement,
+    ): CodexResponse<JsonElement> {
+        return remoteDataSource.writeConfigValue(
+            baseUrl = baseUrl,
+            secret = secret,
+            key = key,
+            value = value,
+        )
     }
 
     override suspend fun interruptTurn(

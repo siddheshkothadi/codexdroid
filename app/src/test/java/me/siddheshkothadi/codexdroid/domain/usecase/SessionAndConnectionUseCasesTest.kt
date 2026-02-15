@@ -161,11 +161,29 @@ class SessionAndConnectionUseCasesTest {
             error("Not needed in test")
         }
 
+        override suspend fun listExperimentalFeatures(
+            baseUrl: String,
+            secret: String?,
+            cursor: String?,
+            limit: Int?,
+        ): CodexResponse<JsonElement> {
+            error("Not needed in test")
+        }
+
         override suspend fun listSkills(baseUrl: String, secret: String?, cwd: String?): CodexResponse<JsonElement> {
             error("Not needed in test")
         }
 
         override suspend fun readConfig(baseUrl: String, secret: String?): CodexResponse<JsonElement> {
+            error("Not needed in test")
+        }
+
+        override suspend fun writeConfigValue(
+            baseUrl: String,
+            secret: String?,
+            key: String,
+            value: JsonElement,
+        ): CodexResponse<JsonElement> {
             error("Not needed in test")
         }
 

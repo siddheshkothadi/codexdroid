@@ -29,6 +29,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.decodeFromJsonElement
@@ -51,6 +52,9 @@ class CodexWsClient(
     private val secret: String? = null,
 ) : Closeable {
     private val tag = "CodexWsClient"
+    private val clientName = "codexdroid_android"
+    private val clientTitle = "CodexDroid Android"
+    private val clientVersion = "0.1.0"
 
     private val client = HttpClient(OkHttp) {
         install(WebSockets)
@@ -162,8 +166,35 @@ class CodexWsClient(
                 session = newSession
                 readerJob = newReaderJob
             }
+            performInitializeHandshake()
             Log.d(tag, "Connected WS: $url")
         }
+    }
+
+    private suspend fun performInitializeHandshake() {
+        val initParams =
+            buildJsonObject {
+                put(
+                    "clientInfo",
+                    buildJsonObject {
+                        put("name", clientName)
+                        put("title", clientTitle)
+                        put("version", clientVersion)
+                    }
+                )
+                put(
+                    "capabilities",
+                    buildJsonObject {
+                        put("experimentalApi", JsonPrimitive(true))
+                    }
+                )
+            }
+
+        val initResponse = sendRawRequest("initialize", initParams)
+        if (initResponse.error != null) {
+            throw IllegalStateException("initialize failed: ${initResponse.error.message}")
+        }
+        sendNotification("initialized", buildJsonObject {})
     }
 
     private suspend fun readLoop(s: WebSocketSession) {
@@ -278,6 +309,37 @@ class CodexWsClient(
             pendingLock.withLock { pending.remove(id) }
             throw e
         }
+    }
+
+    private suspend fun sendRawRequest(method: String, params: JsonObject): CodexResponse<JsonElement> {
+        val id = nextId.incrementAndGet()
+        val deferred = CompletableDeferred<CodexResponse<JsonElement>>()
+        pendingLock.withLock { pending[id] = deferred }
+
+        try {
+            val s = sessionLock.withLock { session } ?: throw IllegalStateException("WS not connected")
+            val payload =
+                buildJsonObject {
+                    put("id", JsonPrimitive(id))
+                    put("method", method)
+                    put("params", params)
+                }
+            s.send(Frame.Text(payload.toString()))
+            return withTimeout(120_000) { deferred.await() }
+        } catch (e: Exception) {
+            pendingLock.withLock { pending.remove(id) }
+            throw e
+        }
+    }
+
+    private suspend fun sendNotification(method: String, params: JsonObject? = null) {
+        val s = sessionLock.withLock { session } ?: throw IllegalStateException("WS not connected")
+        val payload =
+            buildJsonObject {
+                put("method", method)
+                if (params != null) put("params", params)
+            }
+        s.send(Frame.Text(payload.toString()))
     }
 
     internal suspend inline fun <reified P, reified R> send(method: String, params: P? = null): CodexResponse<R> {

@@ -31,9 +31,23 @@ interface CodexSessionRepository {
 
     suspend fun listModels(baseUrl: String, secret: String?): CodexResponse<JsonElement>
 
+    suspend fun listExperimentalFeatures(
+        baseUrl: String,
+        secret: String?,
+        cursor: String?,
+        limit: Int?,
+    ): CodexResponse<JsonElement>
+
     suspend fun listSkills(baseUrl: String, secret: String?, cwd: String?): CodexResponse<JsonElement>
 
     suspend fun readConfig(baseUrl: String, secret: String?): CodexResponse<JsonElement>
+
+    suspend fun writeConfigValue(
+        baseUrl: String,
+        secret: String?,
+        key: String,
+        value: JsonElement,
+    ): CodexResponse<JsonElement>
 
     suspend fun interruptTurn(
         baseUrl: String,

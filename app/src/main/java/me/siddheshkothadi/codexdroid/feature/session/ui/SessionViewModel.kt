@@ -22,6 +22,7 @@ import me.siddheshkothadi.codexdroid.codex.requests.ApprovalPendingRequest
 import me.siddheshkothadi.codexdroid.codex.requests.InMemoryPendingRequestQueue
 import me.siddheshkothadi.codexdroid.codex.requests.PendingRequestParser
 import me.siddheshkothadi.codexdroid.codex.requests.PendingRequestQueue
+import me.siddheshkothadi.codexdroid.codex.requests.ApprovalRules
 import me.siddheshkothadi.codexdroid.codex.requests.UnknownPendingRequest
 import me.siddheshkothadi.codexdroid.codex.requests.UserInputPendingRequest
 import me.siddheshkothadi.codexdroid.domain.model.Connection
@@ -100,6 +101,10 @@ class SessionViewModel @Inject constructor(
     private val readConfigUseCase: ReadConfigUseCase,
     private val respondToApprovalRequestUseCase: RespondToApprovalRequestUseCase,
     private val respondToUserInputRequestUseCase: RespondToUserInputRequestUseCase,
+    private val getSessionControlDefaultsUseCase: GetSessionControlDefaultsUseCase,
+    private val saveSessionControlDefaultsUseCase: SaveSessionControlDefaultsUseCase,
+    private val getApprovalAllowRulesUseCase: GetApprovalAllowRulesUseCase,
+    private val addApprovalAllowRuleUseCase: AddApprovalAllowRuleUseCase,
     private val pingConnectionUseCase: PingConnectionUseCase,
     private val markConnectionUsedUseCase: MarkConnectionUsedUseCase,
     private val deleteConnectionUseCase: DeleteConnectionUseCase,
@@ -160,18 +165,18 @@ class SessionViewModel @Inject constructor(
                 planModeEnabled = planModeEnabled,
             )
         }
-        persistThreadPreferences(model = normalizedModel, effort = normalizedEffort)
+        val modelSlug = resolveModelSlug(modelId = normalizedModel)
+        persistControlPreferences(model = modelSlug, effort = normalizedEffort)
     }
 
-    private fun persistThreadPreferences(model: String?, effort: String?) {
-        val conn = connections.value.firstOrNull() ?: return
-        val thread = _uiState.value.currentThread ?: return
+    private fun persistControlPreferences(model: String?, effort: String?) {
         viewModelScope.launch {
-            val updated =
-                thread.copy(
-                    clientModel = model,
-                    clientEffort = effort,
-                )
+            runCatching { saveSessionControlDefaultsUseCase(model, effort) }
+                .onFailure { Log.w(tag, "Failed to persist session control defaults", it) }
+
+            val conn = connections.value.firstOrNull() ?: return@launch
+            val thread = _uiState.value.currentThread ?: return@launch
+            val updated = thread.copy(clientModel = model, clientEffort = effort)
             upsertThreadUseCase(conn.id, updated)
         }
     }
@@ -193,6 +198,7 @@ class SessionViewModel @Inject constructor(
             val modelsResp = runCatching { listModelsUseCase(connection.baseUrl, connection.secret) }.getOrNull()
             val skillsResp = runCatching { listSkillsUseCase(connection.baseUrl, connection.secret, cwd) }.getOrNull()
             val configResp = runCatching { readConfigUseCase(connection.baseUrl, connection.secret) }.getOrNull()
+            val appDefaults = runCatching { getSessionControlDefaultsUseCase() }.getOrNull()
 
             val models = modelsResp?.result?.let { SessionControlsParser.parseModels(it) }.orEmpty()
             val skills = skillsResp?.result?.let { SessionControlsParser.parseSkills(it) }.orEmpty()
@@ -213,6 +219,7 @@ class SessionViewModel @Inject constructor(
                 val threadPreferredModel =
                     next.currentThread?.clientModel
                         ?.takeIf { it.isNotBlank() }
+                        ?: appDefaults?.model?.takeIf { it.isNotBlank() }
                         ?: configModel
 
                 val resolvedModelId =
@@ -235,6 +242,7 @@ class SessionViewModel @Inject constructor(
 
                 val threadPreferredEffort =
                     next.currentThread?.clientEffort?.takeIf { it.isNotBlank() }
+                        ?: appDefaults?.effort?.takeIf { it.isNotBlank() }
                         ?: configEffort
                 val resolvedEffort =
                     when {
@@ -369,10 +377,46 @@ class SessionViewModel @Inject constructor(
     private fun observeServerRequests() {
         viewModelScope.launch {
             eventRouter.observeServerRequests().collect { req ->
-                pendingRequestQueue.enqueue(PendingRequestParser.parse(req))
+                val parsed = PendingRequestParser.parse(req)
+                if (parsed is ApprovalPendingRequest && shouldAutoAcceptApproval(parsed)) {
+                    val conn = connections.value.firstOrNull()
+                    if (conn != null) {
+                        runCatching {
+                            respondToApprovalRequestUseCase(
+                                conn.baseUrl,
+                                conn.secret,
+                                parsed.requestId,
+                                "accept",
+                            )
+                        }.onFailure {
+                            Log.w(tag, "Failed to auto-accept approval request", it)
+                            pendingRequestQueue.enqueue(parsed)
+                        }
+                    } else {
+                        pendingRequestQueue.enqueue(parsed)
+                    }
+                } else {
+                    pendingRequestQueue.enqueue(parsed)
+                }
                 maybeShowNextPending()
             }
         }
+    }
+
+    private suspend fun shouldAutoAcceptApproval(request: ApprovalPendingRequest): Boolean {
+        val conn = connections.value.firstOrNull() ?: return false
+        val command = ApprovalRules.extractCommandTokens(request.params) ?: return false
+        val rules =
+            runCatching {
+                getApprovalAllowRulesUseCase(
+                    connectionId = conn.id,
+                    workspaceKey = currentWorkspaceKey(),
+                )
+            }.getOrElse {
+                Log.w(tag, "Failed to read approval allow rules", it)
+                emptyList()
+            }
+        return ApprovalRules.matchesCommandPrefix(command, rules)
     }
 
     private fun maybeShowNextPending() {
@@ -467,6 +511,10 @@ class SessionViewModel @Inject constructor(
             _uiState.update { it.copy(isSending = true, error = null, activeTurnId = null, pendingUserMessage = text) }
             
             try {
+                val resolvedModel = resolveModelSlug(_uiState.value.selectedModelId)
+                val resolvedEffort = _uiState.value.selectedEffort?.takeIf { it.isNotBlank() }
+                runCatching { saveSessionControlDefaultsUseCase(resolvedModel, resolvedEffort) }
+
                 // 1. Ensure thread
                 var thread = _uiState.value.currentThread
                 if (thread == null) {
@@ -479,8 +527,8 @@ class SessionViewModel @Inject constructor(
                     thread = resp.result?.thread ?: throw Exception(resp.error?.message)
                     thread =
                         thread.copy(
-                            clientModel = _uiState.value.selectedModelId,
-                            clientEffort = _uiState.value.selectedEffort,
+                            clientModel = resolvedModel,
+                            clientEffort = resolvedEffort,
                         )
                     upsertThreadUseCase(connection.id, thread)
                     selectThreadId(connection.id, thread.id)
@@ -493,8 +541,8 @@ class SessionViewModel @Inject constructor(
                 val collaborationMode =
                     if (_uiState.value.planModeEnabled) {
                         buildPlanCollaborationMode(
-                            model = _uiState.value.selectedModelId,
-                            effort = _uiState.value.selectedEffort,
+                            model = resolvedModel,
+                            effort = resolvedEffort,
                         )
                     } else {
                         null
@@ -506,8 +554,8 @@ class SessionViewModel @Inject constructor(
                         threadId = thread.id,
                         text = text,
                         cwd = effectiveCwd,
-                        model = _uiState.value.selectedModelId,
-                        effort = _uiState.value.selectedEffort,
+                        model = resolvedModel,
+                        effort = resolvedEffort,
                         collaborationMode = collaborationMode,
                     )
                 val turnId = turnResp.result?.turn?.id ?: throw Exception(turnResp.error?.message)
@@ -591,6 +639,22 @@ class SessionViewModel @Inject constructor(
         }
     }
 
+    private fun resolveModelSlug(modelId: String?): String? {
+        val normalized = modelId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val selected =
+            _uiState.value.models.firstOrNull { option ->
+                option.id == normalized || option.model == normalized
+            }
+        return selected?.model?.takeIf { it.isNotBlank() } ?: normalized
+    }
+
+    private fun currentWorkspaceKey(): String {
+        return _uiState.value.currentThread?.cwd?.takeIf { it.isNotBlank() }
+            ?: _uiState.value.currentThread?.path?.takeIf { it.isNotBlank() }
+            ?: _uiState.value.selectedCwd?.takeIf { it.isNotBlank() }
+            ?: "__default__"
+    }
+
     fun renameThread(threadId: String, newName: String) {
         val connection = connections.value.firstOrNull() ?: return
         val normalizedName = newName.trim()
@@ -603,6 +667,37 @@ class SessionViewModel @Inject constructor(
             } catch (e: Exception) {
                 Log.w(tag, "Failed to rename thread", e)
                 _uiState.update { it.copy(error = e.message ?: "Failed to rename thread.") }
+            }
+        }
+    }
+
+    fun allowApprovalAlways(command: List<String>) {
+        val conn = connections.value.firstOrNull() ?: return
+        val pending = _uiState.value.pendingApproval ?: return
+        val normalized = ApprovalRules.normalizeCommandTokens(command)
+        if (normalized.isEmpty()) {
+            decideApproval("accept")
+            return
+        }
+
+        viewModelScope.launch {
+            runCatching {
+                addApprovalAllowRuleUseCase(
+                    connectionId = conn.id,
+                    workspaceKey = currentWorkspaceKey(),
+                    command = normalized,
+                )
+            }.onFailure {
+                Log.w(tag, "Failed to persist approval allow rule", it)
+            }
+
+            try {
+                respondToApprovalRequestUseCase(conn.baseUrl, conn.secret, pending.requestId, "accept")
+            } catch (e: Exception) {
+                Log.w(tag, "Failed to respond to approval request", e)
+            } finally {
+                _uiState.update { it.copy(pendingApproval = null) }
+                maybeShowNextPending()
             }
         }
     }

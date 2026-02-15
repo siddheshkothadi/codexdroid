@@ -55,6 +55,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import me.siddheshkothadi.codexdroid.codex.requests.ApprovalRules
 
 /**
  * Main session screen for chatting with Codex.
@@ -312,6 +313,7 @@ fun SessionScreen(
     }
 
     uiState.pendingApproval?.let { approval ->
+        val approvalCommand = remember(approval.params) { ApprovalRules.extractCommandTokens(approval.params) }
         AlertDialog(
             onDismissRequest = { /* keep until decision */ },
             title = { Text("Approval needed") },
@@ -332,10 +334,18 @@ fun SessionScreen(
                             )
                         }
                     }
+                    if (!approvalCommand.isNullOrEmpty()) {
+                        TextButton(
+                            onClick = { viewModel.allowApprovalAlways(approvalCommand) },
+                            modifier = Modifier.align(Alignment.End),
+                        ) {
+                            Text("Always allow")
+                        }
+                    }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { viewModel.decideApproval("accept") }) { Text("Approve") }
+                TextButton(onClick = { viewModel.decideApproval("accept") }) { Text("Allow once") }
             },
             dismissButton = {
                 TextButton(onClick = { viewModel.decideApproval("decline") }) { Text("Decline") }
@@ -346,6 +356,7 @@ fun SessionScreen(
     uiState.pendingUserInput?.let { req ->
         val requestKey = "userInput:${req.requestId}"
         val selections = rememberSaveable(requestKey) { mutableStateMapOf<String, String>() }
+        val notes = rememberSaveable(requestKey) { mutableStateMapOf<String, String>() }
         AlertDialog(
             onDismissRequest = { /* keep until answered */ },
             title = { Text("Input needed") },
@@ -361,32 +372,52 @@ fun SessionScreen(
                             }
 
                             val selected = selections[q.id].orEmpty()
-                            q.options.forEach { opt ->
-                                val label = opt.label.ifBlank { opt.description }
-                                Row(
-                                    modifier =
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .clickable { selections[q.id] = label },
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    RadioButton(
-                                        selected = selected == label,
-                                        onClick = { selections[q.id] = label }
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                    Column {
-                                        Text(opt.label.ifBlank { "(option)" }, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                        if (opt.description.isNotBlank()) {
+                            if (q.options.isNotEmpty()) {
+                                q.options.forEach { opt ->
+                                    val label = opt.label.ifBlank { opt.description }
+                                    Row(
+                                        modifier =
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .clickable { selections[q.id] = label },
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        RadioButton(
+                                            selected = selected == label,
+                                            onClick = { selections[q.id] = label }
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Column {
                                             Text(
-                                                opt.description,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = CodexTheme.colors.textSecondary
+                                                opt.label.ifBlank { "(option)" },
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis,
                                             )
+                                            if (opt.description.isNotBlank()) {
+                                                Text(
+                                                    opt.description,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = CodexTheme.colors.textSecondary
+                                                )
+                                            }
                                         }
                                     }
                                 }
                             }
+
+                            val notePlaceholder =
+                                when {
+                                    q.options.isEmpty() || q.isOther -> "Type your answer (optional)"
+                                    else -> "Add notes (optional)"
+                                }
+                            OutlinedTextField(
+                                value = notes[q.id].orEmpty(),
+                                onValueChange = { notes[q.id] = it },
+                                placeholder = { Text(notePlaceholder) },
+                                modifier = Modifier.fillMaxWidth(),
+                                minLines = 2,
+                                maxLines = 4,
+                            )
                         }
                     }
                 }
@@ -394,14 +425,26 @@ fun SessionScreen(
             confirmButton = {
                 val canSubmit =
                     req.questions.all { q ->
-                        selections[q.id]?.isNotBlank() == true
+                        val selected = selections[q.id]?.isNotBlank() == true
+                        val hasNotes = notes[q.id]?.isNotBlank() == true
+                        if (q.options.isEmpty()) true else selected || (q.isOther && hasNotes)
                     }
                 TextButton(
                     enabled = canSubmit,
                     onClick = {
                         val answers =
                             req.questions.associate { q ->
-                                q.id to listOf(selections[q.id].orEmpty())
+                                val answerList = mutableListOf<String>()
+                                val selected = selections[q.id]?.trim().orEmpty()
+                                if (selected.isNotBlank()) {
+                                    answerList += selected
+                                }
+                                val note = notes[q.id]?.trim().orEmpty()
+                                if (note.isNotBlank()) {
+                                    if (q.options.isEmpty()) answerList += note
+                                    else answerList += "user_note: $note"
+                                }
+                                q.id to answerList
                             }
                         viewModel.submitUserInput(answers)
                     }

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -26,10 +27,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -210,8 +213,154 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.textSecondary
             )
+
+            Text(
+                text = "Codex Features",
+                style = MaterialTheme.typography.titleMedium,
+                color = colors.textPrimary,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            Text(
+                text =
+                    uiState.activeConnectionName
+                        ?.let { "Connected server: $it" }
+                        ?: "Connect a server from Session to manage feature flags.",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textSecondary,
+            )
+            OutlinedButton(
+                onClick = { viewModel.refreshCodexFeatures() },
+                enabled = uiState.activeConnectionName != null && !uiState.featuresLoading,
+            ) {
+                Text("Refresh features")
+            }
+
+            if (uiState.featuresLoading) {
+                Text(
+                    text = "Loading feature flags...",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.textSecondary,
+                )
+            }
+            if (!uiState.featuresError.isNullOrBlank()) {
+                Text(
+                    text = uiState.featuresError!!,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.accentError,
+                )
+            }
+
+            if (uiState.stableFeatures.isNotEmpty()) {
+                Text(
+                    text = "Stable features",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = colors.textPrimary,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+                uiState.stableFeatures.forEach { feature ->
+                    FeatureToggleRow(
+                        feature = feature,
+                        isUpdating = uiState.featureUpdatingKey == feature.name,
+                        colors = colors,
+                        onToggle = { viewModel.onToggleCodexFeature(feature) },
+                    )
+                }
+            }
+
+            if (uiState.experimentalFeatures.isNotEmpty()) {
+                Text(
+                    text = "Experimental features",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = colors.textPrimary,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+                uiState.experimentalFeatures.forEach { feature ->
+                    FeatureToggleRow(
+                        feature = feature,
+                        isUpdating = uiState.featureUpdatingKey == feature.name,
+                        colors = colors,
+                        onToggle = { viewModel.onToggleCodexFeature(feature) },
+                    )
+                }
+            }
+
+            if (
+                !uiState.featuresLoading &&
+                uiState.featuresError.isNullOrBlank() &&
+                uiState.activeConnectionName != null &&
+                uiState.stableFeatures.isEmpty() &&
+                uiState.experimentalFeatures.isEmpty()
+            ) {
+                Text(
+                    text = "No stable or experimental features were returned by the server.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.textSecondary,
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun FeatureToggleRow(
+    feature: CodexFeatureUi,
+    isUpdating: Boolean,
+    colors: CodexColors,
+    onToggle: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .clickable(enabled = !isUpdating, onClick = onToggle)
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = featureLabel(feature),
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.textPrimary,
+            )
+            Text(
+                text = featureSubtitle(feature),
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textSecondary,
+                maxLines = 3,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+        }
+        Spacer(Modifier.padding(horizontal = 6.dp))
+        Switch(
+            checked = feature.enabled,
+            enabled = !isUpdating,
+            onCheckedChange = { onToggle() },
+        )
+    }
+}
+
+private fun featureLabel(feature: CodexFeatureUi): String {
+    val display = feature.displayName?.trim().orEmpty()
+    if (display.isNotBlank()) return display
+    return feature.name
+        .split("_")
+        .filter { it.isNotBlank() }
+        .joinToString(" ") { token ->
+            token.replaceFirstChar { c -> c.uppercase() }
+        }
+}
+
+private fun featureSubtitle(feature: CodexFeatureUi): String {
+    val description = feature.description?.trim().orEmpty()
+    if (description.isNotBlank()) return description
+    val announcement = feature.announcement?.trim().orEmpty()
+    if (announcement.isNotBlank()) return announcement
+    return "Feature key: features.${feature.name}"
 }
 
 @Composable

@@ -2,6 +2,7 @@ package me.siddheshkothadi.codexdroid.feature.setup.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -33,6 +34,7 @@ fun SetupScreen(
     errorMessage: String? = null,
     modifier: Modifier = Modifier
 ) {
+    val colors = CodexTheme.colors
     var name by rememberSaveable { mutableStateOf("") }
     var url by rememberSaveable { mutableStateOf("") }
     var secret by rememberSaveable { mutableStateOf("") }
@@ -57,7 +59,7 @@ fun SetupScreen(
 
     Scaffold(
         modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        containerColor = CodexTheme.colors.bgPrimary,
+        containerColor = colors.bgPrimary,
         topBar = {
             LargeTopAppBar(
                 title = { Text(if (isEditMode) "Edit Connection" else "Setup Codex Connection") },
@@ -73,7 +75,7 @@ fun SetupScreen(
         },
         bottomBar = {
             Surface(
-                color = CodexTheme.colors.bgPrimary,
+                color = colors.bgPrimary,
                 tonalElevation = 0.dp,
                 shadowElevation = 0.dp
             ) {
@@ -85,16 +87,44 @@ fun SetupScreen(
                         .padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    if (isLoading) {
-                        CircularProgressIndicator()
-                    } else {
-                        Button(
-                            onClick = { onSaveClick(name, url, secret, sarvamApiKey) },
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = url.isNotBlank() && name.isNotBlank()
-                        ) {
-                            Text(if (isEditMode) "Update Connection" else "Connect & Save")
+                    val canSave = url.isNotBlank() && name.isNotBlank()
+                    Button(
+                        onClick = {
+                            if (!isLoading) {
+                                onSaveClick(name, url, secret, sarvamApiKey)
+                            }
+                        },
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 56.dp),
+                        enabled = canSave,
+                        shape = RoundedCornerShape(24.dp),
+                        colors =
+                            ButtonDefaults.buttonColors(
+                                containerColor = colors.accentAction,
+                                contentColor = colors.onAccentAction,
+                                disabledContainerColor = colors.accentAction.copy(alpha = 0.45f),
+                                disabledContentColor = colors.onAccentAction.copy(alpha = 0.7f),
+                            ),
+                    ) {
+                        if (isLoading) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = colors.onAccentAction
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                            }
                         }
+                        Text(
+                            text = if (isEditMode) "Update Connection" else "Connect & Save",
+                            color = colors.onAccentAction
+                        )
                     }
                 }
             }
@@ -112,7 +142,7 @@ fun SetupScreen(
             if (errorMessage != null) {
                 Text(
                     text = errorMessage,
-                    color = CodexTheme.colors.accentError,
+                    color = colors.accentError,
                     style = MaterialTheme.typography.bodyMedium
                 )
             }

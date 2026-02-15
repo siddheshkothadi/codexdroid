@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.buildAnnotatedString
@@ -508,6 +509,7 @@ private fun CodexMarkdown(markdown: String, modifier: Modifier = Modifier) {
     val colors = CodexTheme.colors
     val typography = MaterialTheme.typography
     val baseTextStyle = LocalTextStyle.current.copy(color = colors.textPrimary)
+    val markdownLinkColor = lerp(colors.accentUi, colors.accentPrimary, 0.45f)
     val highlightsBuilder =
         remember(isSystemInDarkTheme()) {
             Highlights.Builder()
@@ -525,7 +527,7 @@ private fun CodexMarkdown(markdown: String, modifier: Modifier = Modifier) {
                 text = colors.textPrimary,
                 codeText = colors.textPrimary,
                 inlineCodeText = colors.textPrimary,
-                linkText = colors.accentPrimary,
+                linkText = markdownLinkColor,
                 codeBackground = Color.Transparent,
                 inlineCodeBackground = Color.Transparent,
                 dividerColor = colors.borderDefault,
@@ -550,7 +552,7 @@ private fun CodexMarkdown(markdown: String, modifier: Modifier = Modifier) {
                     ),
                 link =
                     baseTextStyle.copy(
-                        color = colors.accentPrimary,
+                        color = markdownLinkColor,
                         textDecoration = TextDecoration.Underline,
                         fontWeight = FontWeight.Medium,
                     ),

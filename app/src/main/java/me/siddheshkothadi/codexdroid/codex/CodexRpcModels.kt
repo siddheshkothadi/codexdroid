@@ -217,6 +217,7 @@ data class TurnStartParams(
     val cwd: String? = null,
     val model: String? = null,
     val effort: String? = null,
+    val collaborationMode: JsonElement? = null,
 )
 
 @Serializable
@@ -329,6 +330,13 @@ sealed interface ThreadItem {
     @SerialName("exitedReviewMode")
     data class ExitedReviewMode(override val id: String, val review: String = "") : ThreadItem
 
+    @Serializable
+    @SerialName("contextCompaction")
+    data class ContextCompaction(
+        override val id: String,
+        val status: ContextCompactionStatus = ContextCompactionStatus.unknown,
+    ) : ThreadItem
+
     // Local-only: a UI block to render Codex "plan"/todo updates (from turn/plan/updated or codex/event/plan_update).
     @Serializable
     @SerialName("planUpdate")
@@ -423,6 +431,30 @@ enum class McpToolCallStatus {
         }
 
         override fun serialize(encoder: Encoder, value: McpToolCallStatus) {
+            encoder.encodeString(value.name)
+        }
+    }
+}
+
+@Serializable(with = ContextCompactionStatus.Serializer::class)
+enum class ContextCompactionStatus {
+    inProgress, completed, failed, unknown;
+
+    object Serializer : KSerializer<ContextCompactionStatus> {
+        override val descriptor: SerialDescriptor =
+            PrimitiveSerialDescriptor("ContextCompactionStatus", PrimitiveKind.STRING)
+
+        override fun deserialize(decoder: Decoder): ContextCompactionStatus {
+            val value = decoder.decodeString().trim()
+            return when (value) {
+                "inProgress", "in_progress", "in-progress", "in progress" -> inProgress
+                "completed" -> completed
+                "failed" -> failed
+                else -> entries.firstOrNull { it.name == value } ?: unknown
+            }
+        }
+
+        override fun serialize(encoder: Encoder, value: ContextCompactionStatus) {
             encoder.encodeString(value.name)
         }
     }

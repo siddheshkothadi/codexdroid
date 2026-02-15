@@ -14,6 +14,9 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import me.siddheshkothadi.codexdroid.codex.*
 import me.siddheshkothadi.codexdroid.codex.requests.ApprovalPendingRequest
 import me.siddheshkothadi.codexdroid.codex.requests.InMemoryPendingRequestQueue
@@ -51,6 +54,7 @@ data class SessionUiState(
     val skills: List<SkillOptionUi> = emptyList(),
     val selectedModelId: String? = null,
     val selectedEffort: String? = null,
+    val planModeEnabled: Boolean = false,
     val controlsError: String? = null,
     val ttsNotice: String? = null,
 )
@@ -142,13 +146,18 @@ class SessionViewModel @Inject constructor(
         _uiState.update { it.copy(selectedEffort = normalized) }
     }
 
-    fun saveControlsSelection(modelId: String?, effort: String?) {
+    fun setPlanModeEnabled(enabled: Boolean) {
+        _uiState.update { it.copy(planModeEnabled = enabled) }
+    }
+
+    fun saveControlsSelection(modelId: String?, effort: String?, planModeEnabled: Boolean) {
         val normalizedModel = modelId?.takeIf { it.isNotBlank() }
         val normalizedEffort = effort?.takeIf { it.isNotBlank() }
         _uiState.update {
             it.copy(
                 selectedModelId = normalizedModel,
                 selectedEffort = normalizedEffort,
+                planModeEnabled = planModeEnabled,
             )
         }
         persistThreadPreferences(model = normalizedModel, effort = normalizedEffort)
@@ -481,6 +490,15 @@ class SessionViewModel @Inject constructor(
 
                 // 2. Start turn
                 val effectiveCwd = thread.cwd.takeIf { it.isNotBlank() } ?: _uiState.value.selectedCwd
+                val collaborationMode =
+                    if (_uiState.value.planModeEnabled) {
+                        buildPlanCollaborationMode(
+                            model = _uiState.value.selectedModelId,
+                            effort = _uiState.value.selectedEffort,
+                        )
+                    } else {
+                        null
+                    }
                 val turnResp =
                     startTurnUseCase(
                         baseUrl = connection.baseUrl,
@@ -490,6 +508,7 @@ class SessionViewModel @Inject constructor(
                         cwd = effectiveCwd,
                         model = _uiState.value.selectedModelId,
                         effort = _uiState.value.selectedEffort,
+                        collaborationMode = collaborationMode,
                     )
                 val turnId = turnResp.result?.turn?.id ?: throw Exception(turnResp.error?.message)
                 _uiState.update { it.copy(activeTurnId = turnId) }
@@ -555,6 +574,20 @@ class SessionViewModel @Inject constructor(
                 pendingUserMessage = null,
                 selectedCwd = normalized ?: it.selectedCwd
             )
+        }
+    }
+
+    private fun buildPlanCollaborationMode(model: String?, effort: String?): JsonObject {
+        val normalizedModel = model?.takeIf { it.isNotBlank() }
+        val normalizedEffort = effort?.takeIf { it.isNotBlank() }
+        val settings =
+            buildJsonObject {
+                normalizedModel?.let { put("model", it) }
+                normalizedEffort?.let { put("reasoning_effort", it) }
+            }
+        return buildJsonObject {
+            put("mode", "plan")
+            put("settings", settings)
         }
     }
 

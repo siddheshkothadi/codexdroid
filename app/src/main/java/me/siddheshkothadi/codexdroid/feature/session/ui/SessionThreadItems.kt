@@ -3,6 +3,12 @@ package me.siddheshkothadi.codexdroid.feature.session.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -57,6 +63,7 @@ fun ThreadItemBubble(item: ThreadItem) {
             item is ThreadItem.Reasoning ||
             item is ThreadItem.PlanUpdate ||
             item is ThreadItem.FileChange ||
+            item is ThreadItem.ContextCompaction ||
             item is ThreadItem.McpToolCall ||
             item is ThreadItem.WebSearch ||
             item is ThreadItem.ImageView ||
@@ -104,6 +111,7 @@ fun ThreadItemBubble(item: ThreadItem) {
                 is ThreadItem.CommandExecution -> CommandExecutionItem(item)
                 is ThreadItem.McpToolCall -> McpToolCallItem(item)
                 is ThreadItem.FileChange -> FileChangeItem(item)
+                is ThreadItem.ContextCompaction -> ContextCompactionItem(item)
                 is ThreadItem.WebSearch -> InfoItem(id = item.id, title = "Web search", body = item.query)
                 is ThreadItem.ImageView -> InfoItem(id = item.id, title = "Image", body = item.path)
                 is ThreadItem.EnteredReviewMode -> InfoItem(id = item.id, title = "Review started", body = item.review)
@@ -449,6 +457,68 @@ fun FileChangeItem(item: ThreadItem.FileChange) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun ContextCompactionItem(item: ThreadItem.ContextCompaction) {
+    val colors = CodexTheme.colors
+    val isRunning = item.status == ContextCompactionStatus.inProgress || item.status == ContextCompactionStatus.unknown
+    val dotColor =
+        when (item.status) {
+            ContextCompactionStatus.completed -> colors.accentSuccess
+            ContextCompactionStatus.failed -> colors.accentError
+            ContextCompactionStatus.inProgress, ContextCompactionStatus.unknown -> colors.accentWarning
+        }
+
+    val shimmer =
+        rememberInfiniteTransition(label = "context_compaction_glow")
+            .animateFloat(
+                initialValue = 0.4f,
+                targetValue = 1f,
+                animationSpec =
+                    infiniteRepeatable(
+                        animation = tween(durationMillis = 900, easing = LinearEasing),
+                        repeatMode = RepeatMode.Reverse,
+                    ),
+                label = "context_compaction_alpha",
+            )
+
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(colors.bgSecondary)
+                .padding(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .size(10.dp)
+                    .background(dotColor, CircleShape),
+        )
+        Spacer(Modifier.width(8.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Context compaction",
+                style = MaterialTheme.typography.bodyLarge,
+                color = colors.textSecondary,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text =
+                    if (isRunning) {
+                        "Compacting conversation context to fit token limits…"
+                    } else if (item.status == ContextCompactionStatus.failed) {
+                        "Context compaction failed."
+                    } else {
+                        "Context compaction completed."
+                    },
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textSecondary.copy(alpha = if (isRunning) shimmer.value else 1f),
+            )
         }
     }
 }

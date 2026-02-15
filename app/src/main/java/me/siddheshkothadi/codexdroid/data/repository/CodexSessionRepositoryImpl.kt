@@ -41,8 +41,9 @@ class CodexSessionRepositoryImpl @Inject constructor(
         cwd: String?,
         model: String?,
         effort: String?,
+        collaborationMode: JsonElement?,
     ): CodexResponse<TurnStartResult> {
-        return remoteDataSource.startTurn(baseUrl, secret, threadId, text, cwd, model, effort)
+        return remoteDataSource.startTurn(baseUrl, secret, threadId, text, cwd, model, effort, collaborationMode)
     }
 
     override suspend fun readThread(baseUrl: String, secret: String?, threadId: String): CodexResponse<ThreadReadResult> {

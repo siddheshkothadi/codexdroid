@@ -24,6 +24,7 @@ interface CodexSessionRepository {
         cwd: String?,
         model: String?,
         effort: String?,
+        collaborationMode: JsonElement?,
     ): CodexResponse<TurnStartResult>
 
     suspend fun readThread(baseUrl: String, secret: String?, threadId: String): CodexResponse<ThreadReadResult>

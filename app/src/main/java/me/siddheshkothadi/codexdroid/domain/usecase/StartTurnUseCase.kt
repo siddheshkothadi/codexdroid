@@ -3,6 +3,7 @@ package me.siddheshkothadi.codexdroid.domain.usecase
 import me.siddheshkothadi.codexdroid.domain.repository.CodexSessionRepository
 import me.siddheshkothadi.codexdroid.codex.CodexResponse
 import me.siddheshkothadi.codexdroid.codex.TurnStartResult
+import kotlinx.serialization.json.JsonElement
 import javax.inject.Inject
 
 class StartTurnUseCase @Inject constructor(
@@ -16,6 +17,7 @@ class StartTurnUseCase @Inject constructor(
         cwd: String?,
         model: String?,
         effort: String?,
+        collaborationMode: JsonElement?,
     ): CodexResponse<TurnStartResult> {
         return codexSessionRepository.startTurn(
             baseUrl = baseUrl,
@@ -25,6 +27,7 @@ class StartTurnUseCase @Inject constructor(
             cwd = cwd,
             model = model,
             effort = effort,
+            collaborationMode = collaborationMode,
         )
     }
 }

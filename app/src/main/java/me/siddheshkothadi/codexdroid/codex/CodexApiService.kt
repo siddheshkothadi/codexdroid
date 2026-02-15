@@ -93,6 +93,7 @@ class CodexApiService @Inject constructor(
         cwd: String?,
         model: String?,
         effort: String?,
+        collaborationMode: JsonElement?,
     ): CodexResponse<TurnStartResult> {
         val client = clientManager.get(baseUrl, secret)
         val params =
@@ -102,6 +103,7 @@ class CodexApiService @Inject constructor(
                 cwd = cwd?.takeIf { it.isNotBlank() },
                 model = model?.takeIf { it.isNotBlank() },
                 effort = effort?.takeIf { it.isNotBlank() },
+                collaborationMode = collaborationMode,
             )
         return client.send<TurnStartParams, TurnStartResult>(
             CodexRequest("turn/start", params = params)

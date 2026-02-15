@@ -202,6 +202,11 @@ fun SessionScreen(
             },
             bottomBar = {
                 val canSend = uiState.connectionStatus == ConnectionStatus.Healthy
+                val selectedModelLabel =
+                    uiState.selectedModelId?.let { id ->
+                        uiState.models.firstOrNull { it.id == id || it.model == id }?.displayName ?: id
+                    }
+                val selectedEffortLabel = uiState.selectedEffort?.takeIf { it.isNotBlank() }
                 ChatInput(
                     text = inputText,
                     onTextChange = { inputText = it },
@@ -217,7 +222,11 @@ fun SessionScreen(
                     enabled = !uiState.isSending,
                     isSending = uiState.isSending
                     ,
-                    canSend = canSend
+                    canSend = canSend,
+                    selectedModelLabel = selectedModelLabel,
+                    selectedEffortLabel = selectedEffortLabel,
+                    planModeEnabled = uiState.planModeEnabled,
+                    onDisablePlanMode = { viewModel.setPlanModeEnabled(false) },
                 )
             },
             snackbarHost = {
@@ -295,8 +304,8 @@ fun SessionScreen(
         ControlsBottomSheet(
             uiState = uiState,
             onDismiss = { showControlsSheet = false },
-            onSave = { modelId, effort ->
-                viewModel.saveControlsSelection(modelId, effort)
+            onSave = { modelId, effort, planModeEnabled ->
+                viewModel.saveControlsSelection(modelId, effort, planModeEnabled)
                 showControlsSheet = false
             },
         )
@@ -522,11 +531,12 @@ private fun SessionTopBar(
 private fun ControlsBottomSheet(
     uiState: SessionUiState,
     onDismiss: () -> Unit,
-    onSave: (String?, String?) -> Unit,
+    onSave: (String?, String?, Boolean) -> Unit,
 ) {
     val models = uiState.models
     var draftModelId by rememberSaveable(uiState.selectedModelId) { mutableStateOf(uiState.selectedModelId) }
     var draftEffort by rememberSaveable(uiState.selectedEffort) { mutableStateOf(uiState.selectedEffort) }
+    var draftPlanModeEnabled by rememberSaveable(uiState.planModeEnabled) { mutableStateOf(uiState.planModeEnabled) }
 
     val selectedModel =
         draftModelId?.let { id -> models.firstOrNull { it.id == id || it.model == id } }
@@ -543,7 +553,10 @@ private fun ControlsBottomSheet(
     val persistedEffort = uiState.selectedEffort?.takeIf { it.isNotBlank() }
     val normalizedDraftModel = draftModelId?.takeIf { it.isNotBlank() }
     val normalizedDraftEffort = draftEffort?.takeIf { it.isNotBlank() }
-    val isDirty = normalizedDraftModel != persistedModel || normalizedDraftEffort != persistedEffort
+    val isDirty =
+        normalizedDraftModel != persistedModel ||
+            normalizedDraftEffort != persistedEffort ||
+            draftPlanModeEnabled != uiState.planModeEnabled
 
     var tabIndex by rememberSaveable { mutableIntStateOf(0) }
     ModalBottomSheet(
@@ -557,7 +570,7 @@ private fun ControlsBottomSheet(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Session controls", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                         TextButton(
-                            onClick = { onSave(normalizedDraftModel, normalizedDraftEffort) },
+                            onClick = { onSave(normalizedDraftModel, normalizedDraftEffort, draftPlanModeEnabled) },
                             enabled = !uiState.isControlsSyncing && isDirty,
                         ) { Text("Save") }
                     }
@@ -574,6 +587,31 @@ private fun ControlsBottomSheet(
                         )
                     }
 
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Plan mode",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = CodexTheme.colors.textPrimary,
+                            )
+                            Text(
+                                text = "Ask Codex to explicitly plan steps before execution.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = CodexTheme.colors.textSecondary,
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Switch(
+                            checked = draftPlanModeEnabled,
+                            onCheckedChange = { draftPlanModeEnabled = it },
+                            enabled = !uiState.isControlsSyncing,
+                        )
+                    }
                     Spacer(Modifier.height(12.dp))
                     TabRow(
                         selectedTabIndex = tabIndex,
@@ -1408,6 +1446,7 @@ private fun ErrorView(message: String, onRetry: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ChatInput(
     text: String,
@@ -1418,11 +1457,16 @@ fun ChatInput(
     enabled: Boolean,
     isSending: Boolean,
     canSend: Boolean,
+    selectedModelLabel: String?,
+    selectedEffortLabel: String?,
+    planModeEnabled: Boolean,
+    onDisablePlanMode: () -> Unit,
 ) {
     val colors = CodexTheme.colors
     val isDark = isSystemInDarkTheme()
     val toolsButtonBackground = if (isDark) colors.bgSecondary else colors.inputButtonBackground
     val toolsButtonIcon = if (isDark) colors.textSecondary else colors.inputButtonContent
+    val hasMetaChips = planModeEnabled || !selectedModelLabel.isNullOrBlank() || !selectedEffortLabel.isNullOrBlank()
     Surface(
         color = colors.bgPrimary
     ) {
@@ -1450,67 +1494,154 @@ fun ChatInput(
             }
             Spacer(Modifier.width(10.dp))
 
-            TextField(
-                value = text,
-                onValueChange = onTextChange,
+            Surface(
                 modifier =
                     Modifier
                         .weight(1f)
                         .heightIn(min = 56.dp)
                         .clip(RoundedCornerShape(24.dp))
                         .border(width = 1.dp, color = colors.inputFieldBorder, shape = RoundedCornerShape(24.dp)),
-                placeholder = { Text("Ask something", color = colors.textSecondary) },
-                maxLines = 5,
-                enabled = enabled,
-                trailingIcon = {
-                    if (isSending) {
-                        FilledIconButton(
-                            onClick = onStop,
-                            colors = IconButtonDefaults.filledIconButtonColors(
-                                containerColor = toolsButtonBackground,
-                                contentColor = toolsButtonIcon
-                            ),
-                            modifier = Modifier.padding(end = 4.dp)
+                color = colors.inputFieldBackground,
+                shape = RoundedCornerShape(24.dp),
+            ) {
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 10.dp, end = 4.dp, top = 8.dp, bottom = 4.dp),
+                ) {
+                    if (hasMetaChips) {
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            Icon(
-                                Icons.Default.Stop,
-                                contentDescription = "Stop session"
-                            )
-                        }
-                    } else {
-                        val canShowSend = enabled && canSend && text.trim().isNotEmpty()
-                        if (canShowSend) {
-                            FilledIconButton(
-                                onClick = onSend,
-                                colors = IconButtonDefaults.filledIconButtonColors(
-                                    containerColor = colors.accentAction,
-                                    contentColor = colors.onAccentAction
-                                ),
-                                modifier = Modifier.padding(end = 4.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.ArrowUpward,
-                                    contentDescription = "Send"
+                            if (planModeEnabled) {
+                                PlanModeChip(
+                                    enabled = enabled,
+                                    onClose = onDisablePlanMode,
                                 )
                             }
+                            selectedModelLabel
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let { StaticMetaChip(label = "Model: $it") }
+                            selectedEffortLabel
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let { StaticMetaChip(label = "Reasoning: $it") }
                         }
+                        Spacer(Modifier.height(6.dp))
                     }
-                },
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = colors.inputFieldBackground,
-                    unfocusedContainerColor = colors.inputFieldBackground,
-                    disabledContainerColor = colors.inputFieldBackground,
-                    focusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    cursorColor = colors.accentAction,
-                    focusedTextColor = colors.textPrimary,
-                    unfocusedTextColor = colors.textPrimary,
-                    disabledTextColor = colors.textPrimary,
-                    disabledPlaceholderColor = colors.textSecondary,
-                )
-            )
+
+                    TextField(
+                        value = text,
+                        onValueChange = onTextChange,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp),
+                        placeholder = { Text("Ask something", color = colors.textSecondary) },
+                        maxLines = 5,
+                        enabled = enabled,
+                        trailingIcon = {
+                            if (isSending) {
+                                FilledIconButton(
+                                    onClick = onStop,
+                                    colors = IconButtonDefaults.filledIconButtonColors(
+                                        containerColor = toolsButtonBackground,
+                                        contentColor = toolsButtonIcon
+                                    ),
+                                    modifier = Modifier.padding(end = 4.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Stop,
+                                        contentDescription = "Stop session"
+                                    )
+                                }
+                            } else {
+                                val canShowSend = enabled && canSend && text.trim().isNotEmpty()
+                                if (canShowSend) {
+                                    FilledIconButton(
+                                        onClick = onSend,
+                                        colors = IconButtonDefaults.filledIconButtonColors(
+                                            containerColor = colors.accentAction,
+                                            contentColor = colors.onAccentAction
+                                        ),
+                                        modifier = Modifier.padding(end = 4.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.ArrowUpward,
+                                            contentDescription = "Send"
+                                        )
+                                    }
+                                }
+                            }
+                        },
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            disabledContainerColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent,
+                            disabledIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            cursorColor = colors.accentAction,
+                            focusedTextColor = colors.textPrimary,
+                            unfocusedTextColor = colors.textPrimary,
+                            disabledTextColor = colors.textPrimary,
+                            disabledPlaceholderColor = colors.textSecondary,
+                        )
+                    )
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun PlanModeChip(enabled: Boolean, onClose: () -> Unit) {
+    val colors = CodexTheme.colors
+    Surface(
+        color = colors.chipAccentActiveBackground,
+        shape = RoundedCornerShape(999.dp),
+        modifier = Modifier.border(1.dp, colors.chipAccent.copy(alpha = 0.4f), RoundedCornerShape(999.dp)),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 10.dp),
+        ) {
+            Text(
+                text = "Plan mode",
+                style = MaterialTheme.typography.labelMedium,
+                color = colors.chipAccent,
+            )
+            IconButton(
+                onClick = onClose,
+                enabled = enabled,
+                modifier = Modifier.size(26.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Disable plan mode",
+                    tint = colors.chipAccent,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StaticMetaChip(label: String) {
+    val colors = CodexTheme.colors
+    Surface(
+        color = colors.chipAccentActiveBackground,
+        shape = RoundedCornerShape(999.dp),
+        modifier = Modifier.border(1.dp, colors.chipAccent.copy(alpha = 0.3f), RoundedCornerShape(999.dp)),
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = colors.chipAccent,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

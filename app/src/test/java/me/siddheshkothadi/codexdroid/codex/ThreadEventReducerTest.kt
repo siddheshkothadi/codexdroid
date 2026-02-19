@@ -199,4 +199,64 @@ class ThreadEventReducerTest {
         assertEquals("Second plan", plans.first().explanation)
         assertEquals("B", plans.first().plan.first().step)
     }
+
+    @Test
+    fun terminalInteraction_createsDedicatedTimelineItem_withoutMutatingCommandOutput() {
+        val command =
+            ThreadItem.CommandExecution(
+                id = "item-cmd-1",
+                command = "just fix",
+                processId = "proc-1",
+                aggregatedOutput = "stdout chunk",
+            )
+        val initial = Thread(id = "thread-1", turns = listOf(Turn(id = "turn-1", items = listOf(command))))
+        val params =
+            CodexJson
+                .encodeToJsonElement(
+                    TerminalInteractionNotification.serializer(),
+                    TerminalInteractionNotification(
+                        threadId = "thread-1",
+                        turnId = "turn-1",
+                        itemId = "item-cmd-1",
+                        processId = "proc-1",
+                        stdin = "",
+                    ),
+                ).jsonObject
+
+        val updated = ThreadEventReducer.applyNotification(initial, "item/commandExecution/terminalInteraction", params)
+        val turn = updated.turns.first()
+        val cmd = turn.items.first { it.id == "item-cmd-1" } as ThreadItem.CommandExecution
+        val interaction = turn.items.filterIsInstance<ThreadItem.TerminalInteraction>().firstOrNull()
+
+        assertEquals("stdout chunk", cmd.aggregatedOutput)
+        assertNotNull(interaction)
+        assertEquals("proc-1", interaction?.processId)
+        assertEquals("just fix", interaction?.command)
+        assertTrue(interaction?.waited == true)
+    }
+
+    @Test
+    fun terminalInteraction_samePayload_isIdempotent() {
+        val initial = Thread(id = "thread-1", turns = listOf(Turn(id = "turn-1")))
+        val params =
+            CodexJson
+                .encodeToJsonElement(
+                    TerminalInteractionNotification.serializer(),
+                    TerminalInteractionNotification(
+                        threadId = "thread-1",
+                        turnId = "turn-1",
+                        itemId = "item-cmd-1",
+                        processId = "proc-1",
+                        stdin = "ls\n",
+                    ),
+                ).jsonObject
+
+        val once = ThreadEventReducer.applyNotification(initial, "item/commandExecution/terminalInteraction", params)
+        val twice = ThreadEventReducer.applyNotification(once, "item/commandExecution/terminalInteraction", params)
+        val interactions = twice.turns.first().items.filterIsInstance<ThreadItem.TerminalInteraction>()
+
+        assertEquals(1, interactions.size)
+        assertEquals("ls", interactions.first().stdin)
+        assertTrue(!interactions.first().waited)
+    }
 }

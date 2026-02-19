@@ -176,12 +176,26 @@ object ThreadEventReducer {
         return when {
             existing is ThreadItem.CommandExecution && incoming is ThreadItem.CommandExecution -> {
                 val mergedOutput = incoming.aggregatedOutput ?: existing.aggregatedOutput
-                incoming.copy(aggregatedOutput = mergedOutput)
+                incoming.copy(
+                    command = incoming.command.ifBlank { existing.command },
+                    cwd = incoming.cwd.ifBlank { existing.cwd },
+                    processId = incoming.processId ?: existing.processId,
+                    commandActions = if (incoming.commandActions.isEmpty()) existing.commandActions else incoming.commandActions,
+                    aggregatedOutput = mergedOutput,
+                    exitCode = incoming.exitCode ?: existing.exitCode,
+                    durationMs = incoming.durationMs ?: existing.durationMs,
+                )
             }
             existing is ThreadItem.Reasoning && incoming is ThreadItem.Reasoning -> {
                 val mergedSummary = if (incoming.summary.isEmpty()) existing.summary else incoming.summary
                 val mergedContent = if (incoming.content.isEmpty()) existing.content else incoming.content
                 incoming.copy(summary = mergedSummary, content = mergedContent)
+            }
+            existing is ThreadItem.WebSearch && incoming is ThreadItem.WebSearch -> {
+                incoming.copy(
+                    query = incoming.query.ifBlank { existing.query },
+                    action = incoming.action ?: existing.action,
+                )
             }
             existing is ThreadItem.McpToolCall && incoming is ThreadItem.McpToolCall -> {
                 incoming.copy(progress = existing.progress + incoming.progress)
@@ -264,10 +278,32 @@ object ThreadEventReducer {
     }
 
     private fun applyTerminalInteraction(thread: Thread, data: TerminalInteractionNotification): Thread {
-        return upsertItem(thread, data.turnId, data.itemId, create = { ThreadItem.CommandExecution(id = data.itemId, command = "") }) { item ->
-            val ce = (item as? ThreadItem.CommandExecution) ?: ThreadItem.CommandExecution(id = data.itemId, command = "")
-            val updated = (ce.aggregatedOutput ?: "") + "\n[stdin requested] ${data.stdin}\n"
-            ce.copy(aggregatedOutput = updated)
+        val turn = thread.turns.firstOrNull { it.id == data.turnId }
+        val commandDisplay =
+            turn?.items
+                ?.asSequence()
+                ?.mapNotNull { it as? ThreadItem.CommandExecution }
+                ?.firstOrNull { it.processId == data.processId || it.id == data.itemId }
+                ?.command
+                .orEmpty()
+                .trim()
+        val normalizedStdin = data.stdin.trimEnd('\r', '\n')
+        val waited = normalizedStdin.isBlank()
+        val dedupeKey = "${data.turnId}|${data.itemId}|${data.processId}|$normalizedStdin"
+        val interactionId = "terminal-${data.itemId}-${dedupeKey.hashCode().toUInt().toString(16)}"
+        return upsertItem(
+            thread = thread,
+            turnId = data.turnId,
+            itemId = interactionId,
+            create = { ThreadItem.TerminalInteraction(id = interactionId) },
+        ) { _ ->
+            ThreadItem.TerminalInteraction(
+                id = interactionId,
+                processId = data.processId,
+                command = commandDisplay,
+                stdin = normalizedStdin,
+                waited = waited,
+            )
         }
     }
 

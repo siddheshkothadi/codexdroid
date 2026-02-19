@@ -273,9 +273,13 @@ sealed interface ThreadItem {
     data class CommandExecution(
         override val id: String,
         val command: String,
+        val cwd: String = "",
+        val processId: String? = null,
         val status: CommandExecutionStatus = CommandExecutionStatus.inProgress,
+        val commandActions: List<JsonElement> = emptyList(),
         val aggregatedOutput: String? = null,
-        // Additional fields exist on the wire (cwd, exitCode, durationMs, etc.). We keep the model small and resilient.
+        val exitCode: Int? = null,
+        val durationMs: Long? = null,
     ) : ThreadItem
 
     @Serializable
@@ -316,7 +320,11 @@ sealed interface ThreadItem {
 
     @Serializable
     @SerialName("webSearch")
-    data class WebSearch(override val id: String, val query: String = "") : ThreadItem
+    data class WebSearch(
+        override val id: String,
+        val query: String = "",
+        val action: JsonElement? = null,
+    ) : ThreadItem
 
     @Serializable
     @SerialName("imageView")
@@ -335,6 +343,17 @@ sealed interface ThreadItem {
     data class ContextCompaction(
         override val id: String,
         val status: ContextCompactionStatus = ContextCompactionStatus.unknown,
+    ) : ThreadItem
+
+    // Local-only: transcript row mirroring Codex CLI "Interacted with background terminal" cells.
+    @Serializable
+    @SerialName("terminalInteraction")
+    data class TerminalInteraction(
+        override val id: String,
+        val processId: String = "",
+        val command: String = "",
+        val stdin: String = "",
+        val waited: Boolean = false,
     ) : ThreadItem
 
     // Local-only: a UI block to render Codex "plan"/todo updates (from turn/plan/updated or codex/event/plan_update).

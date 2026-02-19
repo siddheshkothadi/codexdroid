@@ -57,19 +57,7 @@ fun ThreadItemBubble(item: ThreadItem) {
     val isUser = item is ThreadItem.UserMessage
     val alignment = if (isUser) Alignment.End else Alignment.Start
     val background = if (isUser) CodexTheme.colors.userMessageBackground else Color.Transparent
-    val isFullWidthItem = !isUser && item is ThreadItem.AgentMessage
-    val isCardLikeItem =
-        item is ThreadItem.CommandExecution ||
-            item is ThreadItem.Reasoning ||
-            item is ThreadItem.PlanUpdate ||
-            item is ThreadItem.FileChange ||
-            item is ThreadItem.ContextCompaction ||
-            item is ThreadItem.McpToolCall ||
-            item is ThreadItem.WebSearch ||
-            item is ThreadItem.ImageView ||
-            item is ThreadItem.EnteredReviewMode ||
-            item is ThreadItem.ExitedReviewMode ||
-            item is ThreadItem.CollabAgentToolCall
+    val isTranscriptItem = !isUser && item !is ThreadItem.AgentMessage
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
         horizontalAlignment = alignment
@@ -84,7 +72,7 @@ fun ThreadItemBubble(item: ThreadItem) {
                 .then(
                     when {
                         isUser -> Modifier.widthIn(max = 280.dp)
-                        isFullWidthItem || isCardLikeItem -> Modifier.fillMaxWidth()
+                        isTranscriptItem || item is ThreadItem.AgentMessage -> Modifier.fillMaxWidth()
                         else -> Modifier.widthIn(max = 340.dp)
                     }
                 )
@@ -112,12 +100,13 @@ fun ThreadItemBubble(item: ThreadItem) {
                 is ThreadItem.McpToolCall -> McpToolCallItem(item)
                 is ThreadItem.FileChange -> FileChangeItem(item)
                 is ThreadItem.ContextCompaction -> ContextCompactionItem(item)
-                is ThreadItem.WebSearch -> InfoItem(id = item.id, title = "Web search", body = item.query)
-                is ThreadItem.ImageView -> InfoItem(id = item.id, title = "Image", body = item.path)
-                is ThreadItem.EnteredReviewMode -> InfoItem(id = item.id, title = "Review started", body = item.review)
-                is ThreadItem.ExitedReviewMode -> InfoItem(id = item.id, title = "Review finished", body = item.review)
+                is ThreadItem.WebSearch -> WebSearchItem(item)
+                is ThreadItem.ImageView -> ImageViewItem(item)
+                is ThreadItem.TerminalInteraction -> TerminalInteractionItem(item)
+                is ThreadItem.EnteredReviewMode -> ReviewModeItem(title = "Entered review mode", body = item.review)
+                is ThreadItem.ExitedReviewMode -> ReviewModeItem(title = "Exited review mode", body = item.review)
                 is ThreadItem.CollabAgentToolCall ->
-                    InfoItem(id = item.id, title = "Collab tool call", body = "${item.tool} (${item.status})")
+                    ReviewModeItem(title = "Collab tool call", body = "${item.tool} (${item.status})")
             }
         }
     }
@@ -125,201 +114,56 @@ fun ThreadItemBubble(item: ThreadItem) {
 
 @Composable
 fun ReasoningItem(item: ThreadItem.Reasoning) {
-    var expanded by rememberSaveable(item.id) { mutableStateOf(false) }
-    Column {
-        val toggle = { expanded = !expanded }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .background(CodexTheme.colors.bgSecondary)
-                .clickable(onClick = toggle)
-                .padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "Reasoning",
-                style = MaterialTheme.typography.bodyLarge,
-                color = CodexTheme.colors.textSecondary,
-            )
-            Spacer(Modifier.width(4.dp))
-            Icon(
-                if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                contentDescription = null,
-                tint = CodexTheme.colors.textSecondary,
-                modifier = Modifier.size(18.dp)
-            )
-        }
-        if (expanded) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                item.summary.forEach {
-                    ProvideTextStyle(MaterialTheme.typography.bodySmall) {
-                        CodexMarkdown(markdown = it, modifier = Modifier.fillMaxWidth())
-                    }
-                }
-                item.content.forEach {
-                    ProvideTextStyle(MaterialTheme.typography.bodySmall) {
-                        CodexMarkdown(markdown = it, modifier = Modifier.fillMaxWidth())
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun CommandExecutionItem(item: ThreadItem.CommandExecution) {
-    var expanded by rememberSaveable(item.id) { mutableStateOf(false) }
+    val markdown =
+        (item.summary + item.content)
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .joinToString(separator = "\n\n")
+    if (markdown.isBlank()) return
     val colors = CodexTheme.colors
-    Column {
-        val toggle = { expanded = !expanded }
-        val isRunning = item.status == CommandExecutionStatus.inProgress || item.status == CommandExecutionStatus.unknown
-        val title = if (isRunning) "Running" else "Ran"
-        val dotColor =
-            when (item.status) {
-                CommandExecutionStatus.inProgress -> colors.accentWarning
-                CommandExecutionStatus.completed -> colors.accentSuccess
-                CommandExecutionStatus.failed, CommandExecutionStatus.declined -> colors.accentError
-                CommandExecutionStatus.unknown -> colors.borderDefault
-            }
-
-        val commandOneLine = item.command.lineSequence().firstOrNull().orEmpty().trim()
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(CodexTheme.colors.bgSecondary)
-                .clickable(onClick = toggle)
-                .padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(10.dp)
-                    .background(dotColor, CircleShape)
-            )
-            Spacer(Modifier.width(8.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+    val transition = rememberInfiniteTransition(label = "reasoning_item_glow")
+    val glow by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1f,
+        animationSpec =
+            infiniteRepeatable(
+                animation = tween(durationMillis = 1800, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+        label = "reasoning_item_glow_value",
+    )
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = colors.bgSecondary,
+        shape = RoundedCornerShape(14.dp),
+        border =
+            androidx.compose.foundation.BorderStroke(
+                width = 1.dp,
+                color = lerp(colors.borderSubtle, colors.borderDefault, glow * 0.85f),
+            ),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp)) {
+            Surface(
+                color = colors.bgPrimary.copy(alpha = 0.75f),
+                shape = RoundedCornerShape(999.dp),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Text(
-                        title,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = CodexTheme.colors.textSecondary,
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Icon(
-                        if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                        contentDescription = null,
-                        tint = CodexTheme.colors.textSecondary,
-                        modifier = Modifier.size(18.dp)
+                        text = "Reasoning",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.textSecondary,
                     )
                 }
-                Text(
-                    commandOneLine,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = CodexTheme.colors.textSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
             }
-        }
-        if (expanded) {
-            Column(Modifier.fillMaxWidth().background(CodexTheme.colors.bgPrimary).padding(10.dp)) {
-                if (item.command.isNotBlank()) {
-                    Text("Command", style = MaterialTheme.typography.labelSmall, color = CodexTheme.colors.textSecondary)
-                    Text(
-                        item.command,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = CodexTheme.colors.textSecondary
-                    )
-                }
-
-                item.aggregatedOutput?.let { out ->
-                    val trimmedOutput = trimCommandRunOutput(out)
-                    if (trimmedOutput.isNotBlank()) {
-                        if (item.command.isNotBlank()) Spacer(Modifier.height(8.dp))
-                        Text("Output", style = MaterialTheme.typography.labelSmall, color = CodexTheme.colors.textSecondary)
-                        Text(
-                            trimmedOutput,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = CodexTheme.colors.textSecondary
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun PlanUpdateItem(item: ThreadItem.PlanUpdate) {
-    var expanded by rememberSaveable(item.id) { mutableStateOf(false) }
-    Column {
-        val toggle = { expanded = !expanded }
-        val total = item.plan.size
-        val done = item.plan.count { it.status == PlanEntryStatus.completed }
-        val summary =
-            when {
-                total == 0 -> ""
-                done == 0 -> "$total"
-                else -> "$done/$total"
-            }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .background(CodexTheme.colors.bgSecondary)
-                .clickable(onClick = toggle)
-                .padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "To-dos",
-                style = MaterialTheme.typography.bodyLarge,
-                color = CodexTheme.colors.textSecondary,
-            )
-            if (summary.isNotBlank()) {
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    summary,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = CodexTheme.colors.textSecondary,
-                )
-            }
-            Spacer(Modifier.width(4.dp))
-            Icon(
-                if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                contentDescription = null,
-                tint = CodexTheme.colors.textSecondary,
-                modifier = Modifier.size(18.dp)
-            )
-        }
-
-        if (expanded) {
-            val markdown =
-                buildString {
-                    val explanation = item.explanation?.trim().orEmpty()
-                    if (explanation.isNotBlank()) {
-                        appendLine(explanation)
-                        appendLine()
-                    }
-                    item.plan.forEach { entry ->
-                        val step = entry.step.trim()
-                        if (step.isBlank()) return@forEach
-                        val line =
-                            when (entry.status) {
-                                PlanEntryStatus.completed -> "- [x] $step"
-                                PlanEntryStatus.inProgress -> "- [ ] (in progress) $step"
-                                PlanEntryStatus.failed -> "- [ ] (failed) $step"
-                                PlanEntryStatus.cancelled -> "- [ ] (cancelled) $step"
-                                PlanEntryStatus.pending, PlanEntryStatus.unknown -> "- [ ] $step"
-                            }
-                        appendLine(line)
-                    }
-                }
-
-            Column(modifier = Modifier.padding(12.dp)) {
-                if (markdown.isNotBlank()) {
+            Spacer(Modifier.height(8.dp))
+            Surface(
+                color = colors.bgPrimary.copy(alpha = 0.6f),
+                shape = RoundedCornerShape(10.dp),
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(10.dp)) {
                     ProvideTextStyle(MaterialTheme.typography.bodySmall) {
                         CodexMarkdown(markdown = markdown, modifier = Modifier.fillMaxWidth())
                     }
@@ -330,134 +174,223 @@ fun PlanUpdateItem(item: ThreadItem.PlanUpdate) {
 }
 
 @Composable
-fun McpToolCallItem(item: ThreadItem.McpToolCall) {
-    var expanded by rememberSaveable(item.id) { mutableStateOf(false) }
+fun CommandExecutionItem(item: ThreadItem.CommandExecution) {
     val colors = CodexTheme.colors
-    Column {
-        val toggle = { expanded = !expanded }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(CodexTheme.colors.bgSecondary)
-                .clickable(onClick = toggle)
-                .padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "${item.server} :: ${item.tool}",
-                style = MaterialTheme.typography.labelSmall,
-                color = CodexTheme.colors.textSecondary,
-                modifier = Modifier.weight(1f)
-            )
-            Text(
-                item.status.name,
-                style = MaterialTheme.typography.labelSmall,
-                color = when (item.status) {
-                    McpToolCallStatus.completed -> colors.accentSuccess
-                    McpToolCallStatus.failed -> colors.accentError
-                    else -> colors.accentWarning
-                }
-            )
-            Spacer(Modifier.width(6.dp))
-            Icon(
-                if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                contentDescription = null,
-                tint = CodexTheme.colors.textSecondary
-            )
+    var expandedOutput by rememberSaveable(item.id) { mutableStateOf(false) }
+    val isRunning = item.status == CommandExecutionStatus.inProgress || item.status == CommandExecutionStatus.unknown
+    val headerColor =
+        when (item.status) {
+            CommandExecutionStatus.completed -> colors.accentSuccess
+            CommandExecutionStatus.failed, CommandExecutionStatus.declined -> colors.accentError
+            CommandExecutionStatus.inProgress -> colors.accentWarning
+            CommandExecutionStatus.unknown -> colors.textSecondary
+        }
+    val actionLines = formatCommandActionLines(item.commandActions)
+    val isExploring = actionLines.isNotEmpty()
+
+    TranscriptSurface {
+        if (isExploring) {
+            if (isRunning) {
+                RunningTranscriptLine(
+                    text = "Exploring",
+                    color = headerColor,
+                )
+            } else {
+                TranscriptLine(
+                    text = "• Explored",
+                    color = headerColor,
+                )
+            }
+            actionLines.forEachIndexed { index, line ->
+                TranscriptLine(
+                    text = if (index == 0) "  └ $line" else "    $line",
+                    mono = false,
+                )
+            }
+            return@TranscriptSurface
         }
 
-        if (expanded) {
-            Column(Modifier.fillMaxWidth().background(CodexTheme.colors.bgPrimary).padding(10.dp)) {
-                if (item.progress.isNotEmpty()) {
-                    Text("Progress", style = MaterialTheme.typography.labelSmall, color = CodexTheme.colors.textSecondary)
-                    item.progress.takeLast(8).forEach { msg ->
-                        Text(msg, style = MaterialTheme.typography.bodySmall, color = CodexTheme.colors.textPrimary)
-                    }
-                    Spacer(Modifier.height(8.dp))
-                }
+        val commandLines = item.command.lines().map { it.trimEnd() }.filter { it.isNotBlank() }
+        val commandFirst = commandLines.firstOrNull().orEmpty()
+        val heading = "${if (isRunning) "Running" else "Ran"} $commandFirst".trimEnd()
+        if (isRunning) {
+            RunningTranscriptLine(
+                text = heading,
+                color = headerColor,
+                mono = true,
+            )
+        } else {
+            TranscriptLine(
+                text = "• $heading",
+                color = headerColor,
+                mono = true,
+            )
+        }
+        commandLines.drop(1).forEach { line ->
+            TranscriptLine(text = "  │ $line", mono = true)
+        }
 
-                Text("Arguments", style = MaterialTheme.typography.labelSmall, color = CodexTheme.colors.textSecondary)
-                Text(item.arguments.toString(), style = MaterialTheme.typography.bodySmall)
-
-                item.result?.let { res ->
-                    Spacer(Modifier.height(8.dp))
-                    Text("Result", style = MaterialTheme.typography.labelSmall, color = CodexTheme.colors.textSecondary)
-                    Text(res.toString(), style = MaterialTheme.typography.bodySmall)
-                }
-
-                item.error?.let { err ->
-                    Spacer(Modifier.height(8.dp))
-                    Text("Error", style = MaterialTheme.typography.labelSmall, color = CodexTheme.colors.accentError)
-                    Text(err.toString(), style = MaterialTheme.typography.bodySmall)
-                }
+        val outputPreview = truncateOutputForCli(item.aggregatedOutput)
+        val fullOutputLines = fullOutputLines(item.aggregatedOutput)
+        val isTrimmed = fullOutputLines.size > outputPreview.size
+        val outputLines = if (expandedOutput) fullOutputLines else outputPreview
+        if (outputLines.isEmpty() && !isRunning) {
+            TranscriptLine(text = "  └ (no output)", mono = true)
+        } else {
+            outputLines.forEachIndexed { index, line ->
+                TranscriptLine(
+                    text = if (index == 0) "  └ $line" else "    $line",
+                    mono = true,
+                )
+            }
+        }
+        if (!isRunning && isTrimmed) {
+            Spacer(Modifier.height(4.dp))
+            TextButton(
+                onClick = { expandedOutput = !expandedOutput },
+                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
+            ) {
+                Text(
+                    text = if (expandedOutput) "Show less output" else "Show full output",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.textSecondary,
+                )
             }
         }
     }
 }
 
 @Composable
-fun FileChangeItem(item: ThreadItem.FileChange) {
-    var expanded by rememberSaveable(item.id) { mutableStateOf(false) }
+fun PlanUpdateItem(item: ThreadItem.PlanUpdate) {
+    TranscriptSurface {
+        TranscriptLine(text = "• Updated Plan", color = CodexTheme.colors.textSecondary)
+        item.explanation
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { TranscriptLine(text = "  └ $it") }
+        if (item.plan.isEmpty()) {
+            TranscriptLine(text = "  └ (no steps provided)")
+            return@TranscriptSurface
+        }
+        item.plan.forEach { entry ->
+            val step = entry.step.trim().ifBlank { "(empty step)" }
+            val marker = if (entry.status == PlanEntryStatus.completed) "✔ " else "□ "
+            val prefix = if (entry.status == PlanEntryStatus.completed) "    " else "  └ "
+            TranscriptLine(text = "$prefix$marker$step")
+        }
+    }
+}
+
+@Composable
+fun McpToolCallItem(item: ThreadItem.McpToolCall) {
     val colors = CodexTheme.colors
-    Column {
-        val toggle = { expanded = !expanded }
-        val dotColor =
-            when (item.status) {
-                PatchApplyStatus.inProgress -> colors.accentWarning
-                PatchApplyStatus.completed -> colors.accentSuccess
-                PatchApplyStatus.failed, PatchApplyStatus.declined -> colors.accentError
-                PatchApplyStatus.unknown -> colors.borderDefault
-            }
+    var expandedResult by rememberSaveable(item.id) { mutableStateOf(false) }
+    val running = item.status == McpToolCallStatus.inProgress || item.status == McpToolCallStatus.unknown
+    val statusColor =
+        when (item.status) {
+            McpToolCallStatus.completed -> colors.accentSuccess
+            McpToolCallStatus.failed -> colors.accentError
+            McpToolCallStatus.inProgress -> colors.accentWarning
+            McpToolCallStatus.unknown -> colors.textSecondary
+        }
+    val args = compactJson(item.arguments).ifBlank { "{}" }
+    val invocation = "${item.server}.${item.tool}($args)"
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(CodexTheme.colors.bgSecondary)
-                .clickable(onClick = toggle)
-                .padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(10.dp)
-                    .background(dotColor, CircleShape)
+    TranscriptSurface {
+        if (running) {
+            RunningTranscriptLine(
+                text = "Calling $invocation",
+                color = statusColor,
+                mono = true,
             )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                "File changes (${item.changes.size})",
-                style = MaterialTheme.typography.bodyLarge,
-                color = CodexTheme.colors.textSecondary,
-                modifier = Modifier.weight(1f)
-            )
-            Spacer(Modifier.width(4.dp))
-            Icon(
-                if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                contentDescription = null,
-                tint = CodexTheme.colors.textSecondary,
-                modifier = Modifier.size(18.dp)
+        } else {
+            TranscriptLine(
+                text = "• Called $invocation",
+                color = statusColor,
+                mono = true,
             )
         }
-
-        if (expanded) {
-            Column(Modifier.fillMaxWidth().background(CodexTheme.colors.bgPrimary).padding(10.dp)) {
-                item.changes.forEach { change ->
-                    if (change.path.isNotBlank()) {
-                        Text(change.path, style = MaterialTheme.typography.bodySmall, color = CodexTheme.colors.textSecondary)
-                    }
-                    if (change.diff.isNotBlank()) {
-                        Text(change.diff, style = MaterialTheme.typography.bodySmall, color = CodexTheme.colors.textSecondary)
-                    }
-                    Spacer(Modifier.height(8.dp))
-                }
-
-                item.output?.let { out ->
-                    if (out.isNotBlank()) {
-                        Text("Output", style = MaterialTheme.typography.labelSmall, color = CodexTheme.colors.textSecondary)
-                        Text(out, style = MaterialTheme.typography.bodySmall, color = CodexTheme.colors.textSecondary)
-                    }
+        if (running) {
+            item.progress.lastOrNull()?.takeIf { it.isNotBlank() }?.let {
+                TranscriptLine(text = "  └ $it")
+            }
+            return@TranscriptSurface
+        }
+        item.result?.let { res ->
+            val full = fullOutputLines(compactJson(res))
+            val preview = truncateOutputForCli(compactJson(res))
+            val isTrimmed = full.size > preview.size
+            val lines = if (expandedResult) full else preview
+            lines.forEachIndexed { index, line ->
+                TranscriptLine(text = if (index == 0) "  └ $line" else "    $line", mono = true)
+            }
+            if (isTrimmed) {
+                Spacer(Modifier.height(4.dp))
+                TextButton(
+                    onClick = { expandedResult = !expandedResult },
+                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
+                ) {
+                    Text(
+                        text = if (expandedResult) "Show less result" else "Show full result",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.textSecondary,
+                    )
                 }
             }
         }
+        item.error?.let { err ->
+            val msg = compactJson(err).ifBlank { "unknown error" }
+            TranscriptLine(text = "  └ Error: $msg", color = colors.accentError, mono = true)
+        }
+    }
+}
+
+@Composable
+fun FileChangeItem(item: ThreadItem.FileChange) {
+    val colors = CodexTheme.colors
+    var expandedOutput by rememberSaveable(item.id) { mutableStateOf(false) }
+    val lineColor =
+        when (item.status) {
+            PatchApplyStatus.completed -> colors.accentSuccess
+            PatchApplyStatus.failed, PatchApplyStatus.declined -> colors.accentError
+            PatchApplyStatus.inProgress -> colors.accentWarning
+            PatchApplyStatus.unknown -> colors.textSecondary
+        }
+    TranscriptSurface {
+        if (item.changes.isEmpty()) {
+            TranscriptLine(text = "• Applying patch", color = lineColor)
+        } else {
+            item.changes.forEach { change ->
+                TranscriptLine(text = "• ${formatFileChangeSummary(change)}", color = lineColor)
+                truncateDiffPreview(change.diff).forEach { diffLine ->
+                    TranscriptLine(text = "    $diffLine", mono = true)
+                }
+            }
+        }
+        item.output
+            ?.takeIf { it.isNotBlank() }
+            ?.let { out ->
+                val full = fullOutputLines(out)
+                val preview = truncateOutputForCli(out)
+                val isTrimmed = full.size > preview.size
+                val lines = if (expandedOutput) full else preview
+                lines.forEachIndexed { index, line ->
+                    TranscriptLine(text = if (index == 0) "  └ $line" else "    $line", mono = true)
+                }
+                if (isTrimmed) {
+                    Spacer(Modifier.height(4.dp))
+                    TextButton(
+                        onClick = { expandedOutput = !expandedOutput },
+                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
+                    ) {
+                        Text(
+                            text = if (expandedOutput) "Show less patch output" else "Show full patch output",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.textSecondary,
+                        )
+                    }
+                }
+            }
     }
 }
 
@@ -465,114 +398,275 @@ fun FileChangeItem(item: ThreadItem.FileChange) {
 fun ContextCompactionItem(item: ThreadItem.ContextCompaction) {
     val colors = CodexTheme.colors
     val isRunning = item.status == ContextCompactionStatus.inProgress || item.status == ContextCompactionStatus.unknown
-    val dotColor =
+    val message =
+        when {
+            isRunning -> "Compacting conversation context to fit token limits..."
+            item.status == ContextCompactionStatus.failed -> "Context compaction failed."
+            else -> "Context compaction completed."
+        }
+    val color =
         when (item.status) {
             ContextCompactionStatus.completed -> colors.accentSuccess
             ContextCompactionStatus.failed -> colors.accentError
             ContextCompactionStatus.inProgress, ContextCompactionStatus.unknown -> colors.accentWarning
         }
-
-    val shimmer =
-        rememberInfiniteTransition(label = "context_compaction_glow")
-            .animateFloat(
-                initialValue = 0.4f,
-                targetValue = 1f,
-                animationSpec =
-                    infiniteRepeatable(
-                        animation = tween(durationMillis = 900, easing = LinearEasing),
-                        repeatMode = RepeatMode.Reverse,
-                    ),
-                label = "context_compaction_alpha",
+    TranscriptSurface {
+        if (isRunning) {
+            RunningTranscriptLine(
+                text = message,
+                color = color,
             )
-
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(colors.bgSecondary)
-                .padding(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .size(10.dp)
-                    .background(dotColor, CircleShape),
-        )
-        Spacer(Modifier.width(8.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "Context compaction",
-                style = MaterialTheme.typography.bodyLarge,
-                color = colors.textSecondary,
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text =
-                    if (isRunning) {
-                        "Compacting conversation context to fit token limits…"
-                    } else if (item.status == ContextCompactionStatus.failed) {
-                        "Context compaction failed."
-                    } else {
-                        "Context compaction completed."
-                    },
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.textSecondary.copy(alpha = if (isRunning) shimmer.value else 1f),
-            )
+        } else {
+            TranscriptLine(text = "• $message", color = color)
         }
     }
 }
 
 @Composable
-private fun InfoItem(id: String, title: String, body: String) {
-    var expanded by rememberSaveable(id) { mutableStateOf(false) }
-    Column(modifier = Modifier.fillMaxWidth()) {
-        val toggle = { expanded = !expanded }
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(CodexTheme.colors.bgSecondary)
-                    .clickable(onClick = toggle)
-                    .padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = CodexTheme.colors.textSecondary,
-                )
-                if (!expanded && body.isNotBlank()) {
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        body,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = CodexTheme.colors.textSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-            Spacer(Modifier.width(4.dp))
-            Icon(
-                if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                contentDescription = null,
-                tint = CodexTheme.colors.textSecondary,
-                modifier = Modifier.size(18.dp)
-            )
+private fun WebSearchItem(item: ThreadItem.WebSearch) {
+    val running = item.action == null
+    val detail = webSearchDetail(item.action, item.query)
+    val title = if (running) "Searching the web" else "Searched"
+    val lineColor = if (running) CodexTheme.colors.accentWarning else CodexTheme.colors.accentSuccess
+    val text = buildString {
+        append(title)
+        if (detail.isNotBlank()) {
+            append(" ")
+            append(detail)
         }
-        if (expanded) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                if (body.isNotBlank()) {
-                    ProvideTextStyle(MaterialTheme.typography.bodySmall) {
-                        CodexMarkdown(markdown = body, modifier = Modifier.fillMaxWidth())
-                    }
-                }
+    }
+    TranscriptSurface {
+        if (running) {
+            RunningTranscriptLine(text = text, color = lineColor)
+        } else {
+            TranscriptLine(text = "• $text", color = lineColor)
+        }
+    }
+}
+
+@Composable
+private fun ImageViewItem(item: ThreadItem.ImageView) {
+    TranscriptSurface {
+        TranscriptLine(text = "• Viewed Image")
+        item.path.takeIf { it.isNotBlank() }?.let { TranscriptLine(text = "  └ $it", mono = true) }
+    }
+}
+
+@Composable
+private fun TerminalInteractionItem(item: ThreadItem.TerminalInteraction) {
+    val commandSuffix = item.command.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()
+    TranscriptSurface {
+        TranscriptLine(text = "↳ Interacted with background terminal$commandSuffix", mono = true)
+        if (item.waited || item.stdin.isBlank()) {
+            TranscriptLine(text = "  └ (waited)", mono = true)
+        } else {
+            item.stdin.lines().forEachIndexed { index, line ->
+                TranscriptLine(text = if (index == 0) "  └ $line" else "    $line", mono = true)
             }
         }
     }
+}
+
+@Composable
+private fun ReviewModeItem(title: String, body: String) {
+    TranscriptSurface {
+        TranscriptLine(text = "• $title")
+        body.takeIf { it.isNotBlank() }?.let { TranscriptLine(text = "  └ $it") }
+    }
+}
+
+@Composable
+private fun TranscriptSurface(content: @Composable ColumnScope.() -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = CodexTheme.colors.bgSecondary,
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+            content = content
+        )
+    }
+}
+
+@Composable
+private fun ColumnScope.TranscriptLine(
+    text: String,
+    color: Color = CodexTheme.colors.textSecondary,
+    mono: Boolean = false,
+) {
+    Text(
+        text = text,
+        style =
+            (if (mono) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium).copy(
+                fontFamily = if (mono) FontFamily.Monospace else null,
+                color = color,
+            ),
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+@Composable
+private fun ColumnScope.RunningTranscriptLine(
+    text: String,
+    color: Color = CodexTheme.colors.textSecondary,
+    mono: Boolean = false,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        RunningTranscriptIndicator()
+        Text(
+            text = text,
+            style =
+                (if (mono) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium).copy(
+                    fontFamily = if (mono) FontFamily.Monospace else null,
+                    color = color,
+                ),
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun RunningTranscriptIndicator() {
+    val colors = CodexTheme.colors
+    CircularProgressIndicator(
+        modifier = Modifier.size(12.dp),
+        strokeWidth = 1.6.dp,
+        color = colors.textSecondary,
+    )
+}
+
+private fun compactJson(value: Any?): String {
+    val raw = value?.toString().orEmpty().trim()
+    if (raw.isBlank()) return ""
+    return raw
+        .replace("\n", " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+}
+
+private fun truncateOutputForCli(output: String?, limit: Int = 5): List<String> {
+    val lines = fullOutputLines(output)
+    if (lines.isEmpty()) return emptyList()
+    if (lines.size <= limit * 2) return lines
+    val omitted = lines.size - (limit * 2)
+    return buildList {
+        addAll(lines.take(limit))
+        add("… +$omitted lines")
+        addAll(lines.takeLast(limit))
+    }
+}
+
+private fun fullOutputLines(output: String?): List<String> {
+    return output
+        ?.lines()
+        ?.map { it.trimEnd() }
+        ?.filter { it.isNotBlank() }
+        .orEmpty()
+}
+
+private fun truncateDiffPreview(diff: String, maxLines: Int = 3): List<String> {
+    if (diff.isBlank()) return emptyList()
+    return diff.lines().map { it.trimEnd() }.filter { it.isNotBlank() }.take(maxLines)
+}
+
+private fun formatFileChangeSummary(change: FileUpdateChange): String {
+    val kindType = (change.kind as? kotlinx.serialization.json.JsonObject)?.get("type")?.toString()?.trim('"')
+    val kind =
+        when (kindType) {
+            "add" -> "Added"
+            "delete" -> "Deleted"
+            else -> "Edited"
+        }
+    val plus = change.diff.lines().count { it.startsWith("+") && !it.startsWith("+++") }
+    val minus = change.diff.lines().count { it.startsWith("-") && !it.startsWith("---") }
+    val stats = if (plus == 0 && minus == 0) "" else " (+$plus -$minus)"
+    return "$kind ${change.path}$stats"
+}
+
+private fun webSearchDetail(action: kotlinx.serialization.json.JsonElement?, query: String): String {
+    val obj = action as? kotlinx.serialization.json.JsonObject ?: return query
+    val type = obj["type"]?.toString()?.trim('"').orEmpty()
+    return when (type) {
+        "search" -> {
+            val single = obj["query"]?.toString()?.trim('"').orEmpty()
+            if (single.isNotBlank()) return single
+            val queries =
+                (obj["queries"] as? kotlinx.serialization.json.JsonArray)
+                    ?.mapNotNull { it.toString().trim('"').takeIf { v -> v.isNotBlank() } }
+                    .orEmpty()
+            when {
+                queries.isEmpty() -> query
+                queries.size == 1 -> queries.first()
+                else -> "${queries.first()} ..."
+            }
+        }
+        "openPage", "open_page" -> obj["url"]?.toString()?.trim('"').orEmpty()
+        "findInPage", "find_in_page" -> {
+            val url = obj["url"]?.toString()?.trim('"').orEmpty()
+            val pattern = obj["pattern"]?.toString()?.trim('"').orEmpty()
+            when {
+                pattern.isNotBlank() && url.isNotBlank() -> "'$pattern' in $url"
+                pattern.isNotBlank() -> "'$pattern'"
+                else -> url
+            }
+        }
+        else -> query
+    }
+}
+
+private fun formatCommandActionLines(actions: List<kotlinx.serialization.json.JsonElement>): List<String> {
+    if (actions.isEmpty()) return emptyList()
+    val lines = mutableListOf<String>()
+    actions.forEach { element ->
+        val obj = element as? kotlinx.serialization.json.JsonObject ?: return@forEach
+        when (obj["type"]?.toString()?.trim('"')) {
+            "read" -> {
+                val name = obj["name"]?.toString()?.trim('"').orEmpty()
+                val path = obj["path"]?.toString()?.trim('"').orEmpty()
+                val command = obj["command"]?.toString()?.trim('"').orEmpty()
+                val value = name.ifBlank { path }.ifBlank { command }
+                if (value.isNotBlank()) lines.add("Read $value")
+            }
+            "listFiles", "list_files" -> {
+                val path = obj["path"]?.toString()?.trim('"').orEmpty()
+                val command = obj["command"]?.toString()?.trim('"').orEmpty()
+                val value = path.ifBlank { command }
+                if (value.isNotBlank()) lines.add("List $value")
+            }
+            "search" -> {
+                val query = obj["query"]?.toString()?.trim('"').orEmpty()
+                val path = obj["path"]?.toString()?.trim('"').orEmpty()
+                val command = obj["command"]?.toString()?.trim('"').orEmpty()
+                val value =
+                    when {
+                        query.isNotBlank() && path.isNotBlank() -> "$query in $path"
+                        query.isNotBlank() -> query
+                        else -> command
+                    }
+                if (value.isNotBlank()) lines.add("Search $value")
+            }
+            "unknown" -> {
+                val command = obj["command"]?.toString()?.trim('"').orEmpty()
+                if (command.isNotBlank()) lines.add("Run $command")
+            }
+        }
+    }
+    if (lines.isEmpty()) return emptyList()
+    val merged = mutableListOf<String>()
+    lines.forEach { line ->
+        if (line.startsWith("Read ") && merged.lastOrNull()?.startsWith("Read ") == true) {
+            val previous = merged.removeAt(merged.lastIndex)
+            merged.add("$previous, ${line.removePrefix("Read ")}")
+        } else {
+            merged.add(line)
+        }
+    }
+    return merged
 }
 
 @Composable
@@ -779,21 +873,5 @@ private fun normalizeFenceLanguage(language: String?): String? {
         "sh", "bash", "zsh" -> "shell"
         "yml" -> "yaml"
         else -> raw
-    }
-}
-
-private fun trimCommandRunOutput(output: String, topLines: Int = 5, bottomLines: Int = 5): String {
-    if (output.isBlank()) return ""
-    val lines = output.lines()
-    val keepCount = topLines + bottomLines
-    if (lines.size <= keepCount) return output
-
-    val omitted = lines.size - keepCount
-    return buildString {
-        append(lines.take(topLines).joinToString("\n"))
-        append('\n')
-        append("... ($omitted lines omitted) ...")
-        append('\n')
-        append(lines.takeLast(bottomLines).joinToString("\n"))
     }
 }

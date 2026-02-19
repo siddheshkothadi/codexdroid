@@ -46,6 +46,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import me.siddheshkothadi.codexdroid.codex.*
 import me.siddheshkothadi.codexdroid.feature.shared.ui.components.CodexDroidDrawerContent
@@ -180,6 +181,22 @@ fun SessionScreen(
                 if (contextLeftPercent == null) topBarTitle
                 else "$topBarTitle \u00B7 ${contextLeftPercent}%"
             }
+        val runningStatus =
+            remember(uiState.currentThread, uiState.activeTurnId, uiState.isSending) {
+                computeRunningStatusUi(
+                    thread = uiState.currentThread,
+                    activeTurnId = uiState.activeTurnId,
+                    isSending = uiState.isSending,
+                )
+            }
+        val showLiveActivity = uiState.isSending || runningStatus != null
+        var runningSinceMs by rememberSaveable { mutableStateOf(0L) }
+        LaunchedEffect(showLiveActivity, uiState.activeTurnId) {
+            when {
+                showLiveActivity && runningSinceMs == 0L -> runningSinceMs = System.currentTimeMillis()
+                !showLiveActivity -> runningSinceMs = 0L
+            }
+        }
         Scaffold(
             modifier = modifier,
             topBar = {
@@ -236,13 +253,22 @@ fun SessionScreen(
                     uiState.error != null -> ErrorView(uiState.error!!) { viewModel.sendMessage(inputText) }
                     uiState.currentThread != null && uiState.currentThread!!.turns.isEmpty() && uiState.isThreadSyncing -> SessionSkeleton()
                     uiState.currentThread == null && uiState.pendingUserMessage == null -> EmptyView()
-                    uiState.currentThread == null && uiState.pendingUserMessage != null -> PendingConversationView(uiState.pendingUserMessage!!)
+                    uiState.currentThread == null && uiState.pendingUserMessage != null ->
+                        PendingConversationView(
+                            pendingUserMessage = uiState.pendingUserMessage!!,
+                            showTypingIndicator = false,
+                            runningStatus = runningStatus,
+                            runningSinceMs = runningSinceMs,
+                        )
                     else ->
                         MessageList(
                             thread = uiState.currentThread!!,
                             isSending = uiState.isSending,
                             pendingUserMessage = uiState.pendingUserMessage,
                             activeTurnId = uiState.activeTurnId,
+                            showLiveActivityInList = true,
+                            runningStatus = runningStatus,
+                            runningSinceMs = runningSinceMs,
                             scrollToTurnId = uiState.scrollToTurnId,
                             turnSpeechController = turnSpeechController,
                             onScrollToTurnHandled = { viewModel.clearScrollTarget() },
@@ -953,16 +979,16 @@ private fun MessageList(
     isSending: Boolean,
     pendingUserMessage: String?,
     activeTurnId: String?,
+    showLiveActivityInList: Boolean,
+    runningStatus: RunningStatusUi?,
+    runningSinceMs: Long,
     scrollToTurnId: String?,
     turnSpeechController: TurnTextToSpeechController,
     onScrollToTurnHandled: () -> Unit,
 ) {
+    val showLiveIndicators = showLiveActivityInList && (isSending || runningStatus != null)
     val timelineEntries = remember(thread.turns) { buildTimelineEntries(thread.turns) }
     val displayEntries = remember(timelineEntries) { timelineEntries.asReversed() }
-    val liveReasoningHeader =
-        remember(thread.turns, activeTurnId, isSending) {
-            if (!isSending) null else extractLiveReasoningHeader(thread, activeTurnId)
-        }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val showScrollToBottom by remember {
@@ -985,8 +1011,8 @@ private fun MessageList(
         if (firstIndex == -1) return@LaunchedEffect
 
         val offset =
-            (if (isSending) 1 else 0) +
-                (if (!liveReasoningHeader.isNullOrBlank()) 1 else 0) +
+            (if (showLiveIndicators && runningStatus != null && runningSinceMs > 0L) 1 else 0) +
+                (if (showLiveIndicators) 1 else 0) +
                 (if (!pendingUserMessage.isNullOrBlank()) 1 else 0)
         val targetIndex = offset + firstIndex
         listState.animateScrollToItem(targetIndex)
@@ -1005,15 +1031,17 @@ private fun MessageList(
             verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.Bottom),
             reverseLayout = true
         ) {
-            if (isSending) {
-                item(key = "typing-indicator") {
-                    AgentTypingIndicator()
-                }
-                if (!liveReasoningHeader.isNullOrBlank()) {
-                    item(key = "reasoning-live-header") {
-                        ReasoningLiveHeader(text = liveReasoningHeader)
+            if (showLiveIndicators) {
+                if (runningStatus != null && runningSinceMs > 0L) {
+                    item(key = "live-status-inline") {
+                        LiveStatusInlineRow(
+                            status = runningStatus,
+                            startedAtMs = runningSinceMs,
+                        )
                     }
                 }
+                // Temporarily disabled for visual QA:
+                // item(key = "typing-indicator") { AgentTypingIndicator() }
             }
             if (!pendingUserMessage.isNullOrBlank() && !threadHasUserMessage(thread, activeTurnId, pendingUserMessage)) {
                 item(key = "pending-user-message") {
@@ -1056,6 +1084,160 @@ private fun MessageList(
             }
         }
     }
+}
+
+private data class RunningStatusUi(
+    val header: String,
+    val inlineMessage: String? = null,
+)
+
+private fun computeRunningStatusUi(
+    thread: Thread?,
+    activeTurnId: String?,
+    isSending: Boolean,
+): RunningStatusUi? {
+    val activeTurn =
+        thread?.let {
+            when {
+                !activeTurnId.isNullOrBlank() -> it.turns.firstOrNull { turn -> turn.id == activeTurnId }
+                else ->
+                    it.turns.lastOrNull { turn -> turn.status == TurnStatus.inProgress }
+                        ?: it.turns.lastOrNull(::turnHasInFlightItems)
+                        ?: it.turns.lastOrNull()
+            }
+        }
+    val hasInFlightItems = activeTurn?.let(::turnHasInFlightItems) == true
+    val hasInProgressTurn = activeTurn?.status == TurnStatus.inProgress
+    if (!isSending && !hasInProgressTurn && !hasInFlightItems) return null
+
+    val header =
+        when {
+            activeTurn == null -> "Working"
+            else -> {
+                val waitedInteraction =
+                    activeTurn.items
+                        .asReversed()
+                        .mapNotNull { item -> item as? ThreadItem.TerminalInteraction }
+                        .firstOrNull { it.waited || it.stdin.isBlank() }
+                if (waitedInteraction != null) {
+                    val command = waitedInteraction.command.takeIf { it.isNotBlank() }
+                    if (command != null) "Waiting for background terminal · $command"
+                    else "Waiting for background terminal"
+                } else {
+                    val runningCommand =
+                        activeTurn.items
+                            .asReversed()
+                            .mapNotNull { item -> item as? ThreadItem.CommandExecution }
+                            .firstOrNull { it.status == CommandExecutionStatus.inProgress || it.status == CommandExecutionStatus.unknown }
+                    val runningMcp =
+                        activeTurn.items
+                            .asReversed()
+                            .mapNotNull { item -> item as? ThreadItem.McpToolCall }
+                            .firstOrNull { it.status == McpToolCallStatus.inProgress || it.status == McpToolCallStatus.unknown }
+                    val runningSearch =
+                        activeTurn.items
+                            .asReversed()
+                            .mapNotNull { item -> item as? ThreadItem.WebSearch }
+                            .firstOrNull { it.action == null }
+                    val runningCompaction =
+                        activeTurn.items
+                            .asReversed()
+                            .mapNotNull { item -> item as? ThreadItem.ContextCompaction }
+                            .firstOrNull { it.status == ContextCompactionStatus.inProgress || it.status == ContextCompactionStatus.unknown }
+                    when {
+                        runningSearch != null -> "Searching the web"
+                        runningMcp != null -> "Calling ${runningMcp.server}.${runningMcp.tool}"
+                        runningCompaction != null -> "Compacting context"
+                        runningCommand != null && runningCommand.commandActions.isNotEmpty() -> "Exploring"
+                        runningCommand != null -> "Running"
+                        else -> extractLiveReasoningHeader(thread, activeTurnId) ?: "Working"
+                    }
+                }
+            }
+        }
+
+    val backgroundCount =
+        activeTurn
+            ?.items
+            ?.mapNotNull { item -> item as? ThreadItem.CommandExecution }
+            ?.count { it.status == CommandExecutionStatus.inProgress || it.status == CommandExecutionStatus.unknown }
+            ?: 0
+
+    val inlineMessage =
+        if (backgroundCount > 0) {
+            "$backgroundCount background terminal${if (backgroundCount == 1) "" else "s"} running"
+        } else {
+            null
+        }
+
+    return RunningStatusUi(header = header, inlineMessage = inlineMessage)
+}
+
+private fun turnHasInFlightItems(turn: Turn): Boolean {
+    return turn.items.any { item ->
+        when (item) {
+            is ThreadItem.CommandExecution ->
+                item.status == CommandExecutionStatus.inProgress || item.status == CommandExecutionStatus.unknown
+            is ThreadItem.McpToolCall ->
+                item.status == McpToolCallStatus.inProgress || item.status == McpToolCallStatus.unknown
+            is ThreadItem.WebSearch -> item.action == null
+            is ThreadItem.ContextCompaction ->
+                item.status == ContextCompactionStatus.inProgress || item.status == ContextCompactionStatus.unknown
+            is ThreadItem.FileChange ->
+                item.status == PatchApplyStatus.inProgress || item.status == PatchApplyStatus.unknown
+            else -> false
+        }
+    }
+}
+
+@Composable
+private fun LiveStatusInlineRow(
+    status: RunningStatusUi,
+    startedAtMs: Long,
+    modifier: Modifier = Modifier,
+) {
+    val nowMs by produceState(
+        initialValue = System.currentTimeMillis(),
+        key1 = startedAtMs,
+        key2 = status.header,
+        key3 = status.inlineMessage,
+    ) {
+        while (true) {
+            value = System.currentTimeMillis()
+            delay(1000L)
+        }
+    }
+    val elapsedSeconds = ((nowMs - startedAtMs).coerceAtLeast(0L)) / 1000L
+    val elapsed = formatElapsedCompact(elapsedSeconds)
+    val line =
+        buildString {
+            append(status.header)
+            append(" (")
+            append(elapsed)
+            append(")")
+            status.inlineMessage?.takeIf { it.isNotBlank() }?.let {
+                append(" · ")
+                append(it)
+            }
+        }
+    ReasoningLiveHeader(
+        text = line,
+        modifier = modifier,
+        maxLines = 2,
+    )
+}
+
+private fun formatElapsedCompact(elapsedSecs: Long): String {
+    if (elapsedSecs < 60) return "${elapsedSecs}s"
+    if (elapsedSecs < 3600) {
+        val minutes = elapsedSecs / 60
+        val seconds = elapsedSecs % 60
+        return "${minutes}m ${seconds.toString().padStart(2, '0')}s"
+    }
+    val hours = elapsedSecs / 3600
+    val minutes = (elapsedSecs % 3600) / 60
+    val seconds = elapsedSecs % 60
+    return "${hours}h ${minutes.toString().padStart(2, '0')}m ${seconds.toString().padStart(2, '0')}s"
 }
 
 private sealed interface ThreadTimelineEntry {
@@ -1172,7 +1354,11 @@ private fun normalizeReasoningHeader(raw: String): String {
 }
 
 @Composable
-private fun ReasoningLiveHeader(text: String) {
+private fun ReasoningLiveHeader(
+    text: String,
+    modifier: Modifier = Modifier,
+    maxLines: Int = 3,
+) {
     val glowColor = CodexTheme.colors.bgPrimary
     val textColor = CodexTheme.colors.textSecondary
 
@@ -1199,12 +1385,12 @@ private fun ReasoningLiveHeader(text: String) {
     )
 
     Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp).offset(y = (-6).dp),
+        modifier = modifier.fillMaxWidth().padding(horizontal = 4.dp).offset(y = (-6).dp),
         horizontalAlignment = Alignment.Start,
     ) {
         Text(
             text = text,
-            maxLines = 3,
+            maxLines = maxLines,
             overflow = TextOverflow.Ellipsis,
             style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
             color = textColor,
@@ -1414,7 +1600,12 @@ private fun threadHasUserMessage(thread: Thread, turnId: String?, expectedText: 
 }
 
 @Composable
-private fun PendingConversationView(pendingUserMessage: String) {
+private fun PendingConversationView(
+    pendingUserMessage: String,
+    showTypingIndicator: Boolean,
+    runningStatus: RunningStatusUi?,
+    runningSinceMs: Long,
+) {
     // Brand-new thread: show the user message immediately, even before thread/start returns.
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -1422,7 +1613,17 @@ private fun PendingConversationView(pendingUserMessage: String) {
         verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.Bottom),
         reverseLayout = true
     ) {
-        item { AgentTypingIndicator() }
+        if (runningStatus != null && runningSinceMs > 0L) {
+            item(key = "pending-live-status-inline") {
+                LiveStatusInlineRow(
+                    status = runningStatus,
+                    startedAtMs = runningSinceMs,
+                )
+            }
+        }
+        if (showTypingIndicator) {
+            item { AgentTypingIndicator() }
+        }
         item {
             ThreadItemBubble(
                 ThreadItem.UserMessage(

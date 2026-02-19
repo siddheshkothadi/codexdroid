@@ -110,6 +110,7 @@ class SessionViewModel @Inject constructor(
     private val deleteConnectionUseCase: DeleteConnectionUseCase,
     private val synthesizeSarvamSpeechUseCase: SynthesizeSarvamSpeechUseCase,
     private val eventRouter: CodexEventRouter,
+    private val codexAppLifecycle: CodexAppLifecycle,
 ) : ViewModel() {
     private val tag = "SessionViewModel"
 
@@ -138,6 +139,7 @@ class SessionViewModel @Inject constructor(
     init {
         observeHistory()
         observeActiveSession()
+        observeForegroundReconnect()
         observeServerRequests()
     }
 
@@ -425,10 +427,21 @@ class SessionViewModel @Inject constructor(
                 .distinctUntilChangedBy { it?.id }
                 .collect { active ->
                     if (active != null) {
-                        checkConnection(active)
+                        checkConnection(active, retryOnFailure = true)
                     } else {
                         _uiState.update { it.copy(connectionStatus = ConnectionStatus.Unknown) }
                     }
+                }
+        }
+    }
+
+    private fun observeForegroundReconnect() {
+        viewModelScope.launch {
+            codexAppLifecycle.isForeground
+                .filter { it }
+                .collect {
+                    val active = connections.value.firstOrNull() ?: return@collect
+                    checkConnection(active, retryOnFailure = true)
                 }
         }
     }
@@ -959,36 +972,48 @@ class SessionViewModel @Inject constructor(
 
     // --- Connection health ---
 
-    private fun checkConnection(connection: Connection) {
+    private fun checkConnection(connection: Connection, retryOnFailure: Boolean = false) {
         connectionCheckJob?.cancel()
         _uiState.update { it.copy(connectionStatus = ConnectionStatus.Checking) }
         connectionCheckJob = viewModelScope.launch {
-            val ok = pingConnectionUseCase(connection)
-            _uiState.update { it.copy(connectionStatus = if (ok) ConnectionStatus.Healthy else ConnectionStatus.Unhealthy) }
+            var attempt = 0
+            while (true) {
+                val ok = pingConnectionUseCase(connection)
+                _uiState.update { it.copy(connectionStatus = if (ok) ConnectionStatus.Healthy else ConnectionStatus.Unhealthy) }
 
-            if (ok) {
-                // Populate controls (models/skills) as soon as the server is reachable.
-                val cwd =
-                    _uiState.value.currentThread?.cwd?.takeIf { it.isNotBlank() }
-                        ?: _uiState.value.currentThread?.path?.takeIf { it.isNotBlank() }
-                        ?: _uiState.value.selectedCwd
-                refreshControlsForConnection(connection, cwd, force = false)
-            }
+                if (ok) {
+                    // Populate controls (models/skills) as soon as the server is reachable.
+                    val cwd =
+                        _uiState.value.currentThread?.cwd?.takeIf { it.isNotBlank() }
+                            ?: _uiState.value.currentThread?.path?.takeIf { it.isNotBlank() }
+                            ?: _uiState.value.selectedCwd
+                    refreshControlsForConnection(connection, cwd, force = false)
+                }
 
-            // Always do one initial history sync per connection on app start, even if the local DB
-            // has already emitted (and set isHistoryInitialized=true).
-            if (ok && didInitialHistorySyncForConnectionId != connection.id) {
-                didInitialHistorySyncForConnectionId = connection.id
-                try {
-                    _uiState.update { it.copy(isHistorySyncing = true) }
-                    refreshThreadsUseCase(connection)
-                } catch (e: Exception) {
-                    Log.w(tag, "History sync failed", e)
-                } finally {
-                    withContext(NonCancellable) {
-                        _uiState.update { it.copy(isHistorySyncing = false) }
+                // Always do one initial history sync per connection on app start, even if the local DB
+                // has already emitted (and set isHistoryInitialized=true).
+                if (ok && didInitialHistorySyncForConnectionId != connection.id) {
+                    didInitialHistorySyncForConnectionId = connection.id
+                    try {
+                        _uiState.update { it.copy(isHistorySyncing = true) }
+                        refreshThreadsUseCase(connection)
+                    } catch (e: Exception) {
+                        Log.w(tag, "History sync failed", e)
+                    } finally {
+                        withContext(NonCancellable) {
+                            _uiState.update { it.copy(isHistorySyncing = false) }
+                        }
                     }
                 }
+
+                if (ok || !retryOnFailure) return@launch
+                if (connections.value.firstOrNull()?.id != connection.id) return@launch
+
+                attempt += 1
+                val backoffMs = minOf(15_000L, 1_000L * (1L shl minOf(attempt, 4)))
+                delay(backoffMs)
+                if (connections.value.firstOrNull()?.id != connection.id) return@launch
+                _uiState.update { it.copy(connectionStatus = ConnectionStatus.Checking) }
             }
         }
     }

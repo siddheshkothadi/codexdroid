@@ -51,6 +51,12 @@ class CodexWsClient(
     private val baseUrl: String,
     private val secret: String? = null,
 ) : Closeable {
+    private enum class InitializeState {
+        NotStarted,
+        InProgress,
+        Completed,
+    }
+
     private val tag = "CodexWsClient"
     private val clientName = "codexdroid_android"
     private val clientTitle = "CodexDroid Android"
@@ -63,8 +69,12 @@ class CodexWsClient(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val sessionLock = Mutex()
     private val connectLock = Mutex()
+    private val startLock = Mutex()
     private var session: WebSocketSession? = null
     private var readerJob: Job? = null
+    private val initializeLock = Mutex()
+    @Volatile private var initializeState = InitializeState.NotStarted
+    private var initializeDeferred: CompletableDeferred<Unit>? = null
 
     // Use a high starting point to reduce the chance of colliding with server-initiated request IDs
     // in full-duplex JSON-RPC streams.
@@ -84,9 +94,11 @@ class CodexWsClient(
     fun observeEvents(): Flow<CodexEvent> = events.asSharedFlow()
 
     suspend fun start() {
-        if (started) return
-        started = true
-        scope.launch { maintainConnectionLoop() }
+        startLock.withLock {
+            if (started) return
+            started = true
+            scope.launch { maintainConnectionLoop() }
+        }
     }
 
     private suspend fun maintainConnectionLoop() {
@@ -126,15 +138,39 @@ class CodexWsClient(
     }
 
     private suspend fun ensureConnected() {
-        // Fast path without taking the connect lock.
-        sessionLock.withLock {
-            if (session != null && readerJob?.isActive == true) return
+        val pendingInitialization =
+            sessionLock.withLock {
+                if (session != null && readerJob?.isActive == true) {
+                    when (initializeState) {
+                        InitializeState.Completed -> return
+                        InitializeState.InProgress -> initializeDeferred
+                        InitializeState.NotStarted -> null
+                    }
+                } else {
+                    null
+                }
+            }
+        if (pendingInitialization != null) {
+            pendingInitialization.await()
+            return
         }
 
         connectLock.withLock {
-            // Re-check once serialized.
-            sessionLock.withLock {
-                if (session != null && readerJob?.isActive == true) return
+            val inFlightInitialization =
+                sessionLock.withLock {
+                    if (session != null && readerJob?.isActive == true) {
+                        when (initializeState) {
+                            InitializeState.Completed -> return@withLock null
+                            InitializeState.InProgress -> initializeDeferred
+                            InitializeState.NotStarted -> null
+                        }
+                    } else {
+                        null
+                    }
+                }
+            if (inFlightInitialization != null) {
+                inFlightInitialization.await()
+                return
             }
 
             // Tear down any previous session before opening a new one.
@@ -165,36 +201,98 @@ class CodexWsClient(
             sessionLock.withLock {
                 session = newSession
                 readerJob = newReaderJob
+                initializeState = InitializeState.InProgress
+                initializeDeferred = CompletableDeferred()
             }
-            performInitializeHandshake()
+            performInitializeHandshake(newSession)
             Log.d(tag, "Connected WS: $url")
         }
     }
 
-    private suspend fun performInitializeHandshake() {
-        val initParams =
-            buildJsonObject {
-                put(
-                    "clientInfo",
-                    buildJsonObject {
-                        put("name", clientName)
-                        put("title", clientTitle)
-                        put("version", clientVersion)
+    private suspend fun performInitializeHandshake(expectedSession: WebSocketSession) {
+        initializeLock.withLock {
+            val shouldInitialize =
+                sessionLock.withLock {
+                    if (session !== expectedSession) return
+                    when (initializeState) {
+                        InitializeState.Completed -> false
+                        InitializeState.InProgress -> true
+                        InitializeState.NotStarted -> {
+                            initializeState = InitializeState.InProgress
+                            if (initializeDeferred == null) {
+                                initializeDeferred = CompletableDeferred()
+                            }
+                            true
+                        }
                     }
-                )
-                put(
-                    "capabilities",
-                    buildJsonObject {
-                        put("experimentalApi", JsonPrimitive(true))
-                    }
-                )
-            }
+                }
+            if (!shouldInitialize) return
 
-        val initResponse = sendRawRequest("initialize", initParams)
-        if (initResponse.error != null) {
-            throw IllegalStateException("initialize failed: ${initResponse.error.message}")
+            val initParams =
+                buildJsonObject {
+                    put(
+                        "clientInfo",
+                        buildJsonObject {
+                            put("name", clientName)
+                            put("title", clientTitle)
+                            put("version", clientVersion)
+                        }
+                    )
+                    put(
+                        "capabilities",
+                        buildJsonObject {
+                            put("experimentalApi", JsonPrimitive(true))
+                        }
+                    )
+                }
+
+            Log.d(tag, "Initializing Codex WS with experimentalApi capability")
+            try {
+                val initResponse = sendRawRequest("initialize", initParams)
+                if (initResponse.error != null) {
+                    val message = initResponse.error.message
+                    if (!message.contains("Already initialized", ignoreCase = true)) {
+                        val failure = IllegalStateException("initialize failed: $message")
+                        completeInitialization(
+                            expectedSession = expectedSession,
+                            success = false,
+                            error = failure,
+                        )
+                        throw failure
+                    }
+                    Log.w(tag, "Server reported already initialized; sending initialized notification and treating current connection as initialized")
+                    sendNotification("initialized", buildJsonObject {})
+                    completeInitialization(expectedSession = expectedSession, success = true)
+                    return
+                }
+
+                sendNotification("initialized", buildJsonObject {})
+                completeInitialization(expectedSession = expectedSession, success = true)
+            } catch (e: Exception) {
+                completeInitialization(expectedSession = expectedSession, success = false, error = e)
+                throw e
+            }
         }
-        sendNotification("initialized", buildJsonObject {})
+    }
+
+    private suspend fun completeInitialization(
+        expectedSession: WebSocketSession,
+        success: Boolean,
+        error: Throwable? = null,
+    ) {
+        val deferred =
+            sessionLock.withLock {
+                if (session !== expectedSession) return
+                initializeState = if (success) InitializeState.Completed else InitializeState.NotStarted
+                initializeDeferred.also { initializeDeferred = null }
+            }
+        if (success) {
+            deferred?.complete(Unit)
+        } else if (error != null) {
+            deferred?.completeExceptionally(error)
+        } else {
+            deferred?.cancel()
+        }
     }
 
     private suspend fun readLoop(s: WebSocketSession) {
@@ -372,6 +470,9 @@ class CodexWsClient(
                 job = readerJob
                 session = null
                 readerJob = null
+                initializeState = InitializeState.NotStarted
+                initializeDeferred?.cancel()
+                initializeDeferred = null
                 true
             }
 
@@ -397,6 +498,7 @@ class CodexWsClient(
 
     override fun close() {
         stopping = true
+        initializeState = InitializeState.NotStarted
         scope.launch {
             closeSession()
             client.close()

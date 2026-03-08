@@ -58,6 +58,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import me.siddheshkothadi.codexdroid.feature.session.ui.FollowUpMessageBehavior
 import me.siddheshkothadi.codexdroid.ui.theme.CodexColors
 import me.siddheshkothadi.codexdroid.ui.theme.CodexTheme
 
@@ -218,6 +219,31 @@ fun SettingsScreen(
             )
 
             Text(
+                text = "Follow-up behavior",
+                style = MaterialTheme.typography.labelLarge,
+                color = colors.textPrimary
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FollowUpBehaviorChip(
+                    label = "Queue",
+                    selected = uiState.followUpMessageBehavior == FollowUpMessageBehavior.Queue,
+                    colors = colors,
+                    onClick = { viewModel.onFollowUpMessageBehaviorChanged(FollowUpMessageBehavior.Queue) },
+                )
+                FollowUpBehaviorChip(
+                    label = "Steer",
+                    selected = uiState.followUpMessageBehavior == FollowUpMessageBehavior.Steer,
+                    colors = colors,
+                    onClick = { viewModel.onFollowUpMessageBehaviorChanged(FollowUpMessageBehavior.Steer) },
+                )
+            }
+            Text(
+                text = "While a turn is active, new messages will either queue or steer based on this preference.",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textSecondary,
+            )
+
+            Text(
                 text = "Codex Features",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 color = colors.textPrimary,
@@ -305,6 +331,29 @@ fun SettingsScreen(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun FollowUpBehaviorChip(
+    label: String,
+    selected: Boolean,
+    colors: CodexColors,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier =
+            Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .clickable(onClick = onClick),
+        color = if (selected) colors.controlStrong else colors.inputFieldBackground,
+        shape = RoundedCornerShape(999.dp),
+    ) {
+        Text(
+            text = label,
+            color = if (selected) colors.controlStrongOn else colors.textPrimary,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+        )
     }
 }
 

@@ -226,6 +226,18 @@ data class TurnStartResult(
 )
 
 @Serializable
+data class TurnSteerParams(
+    val threadId: String,
+    val turnId: String,
+    val input: List<UserInput>,
+)
+
+@Serializable
+data class TurnSteerResult(
+    val turnId: String? = null,
+)
+
+@Serializable
 data class TurnInterruptParams(
     val threadId: String,
     val turnId: String
@@ -363,6 +375,14 @@ sealed interface ThreadItem {
         override val id: String,
         val explanation: String? = null,
         val plan: List<PlanEntry> = emptyList(),
+    ) : ThreadItem
+
+    @Serializable
+    @SerialName("plan")
+    data class Plan(
+        override val id: String,
+        val status: String = "",
+        val text: String = "",
     ) : ThreadItem
 }
 

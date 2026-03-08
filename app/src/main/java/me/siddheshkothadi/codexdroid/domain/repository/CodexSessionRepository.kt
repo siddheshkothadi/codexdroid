@@ -6,6 +6,7 @@ import me.siddheshkothadi.codexdroid.codex.EmptyResult
 import me.siddheshkothadi.codexdroid.codex.ThreadReadResult
 import me.siddheshkothadi.codexdroid.codex.ThreadResumeResult
 import me.siddheshkothadi.codexdroid.codex.ThreadStartResult
+import me.siddheshkothadi.codexdroid.codex.TurnSteerResult
 import me.siddheshkothadi.codexdroid.codex.TurnStartResult
 import me.siddheshkothadi.codexdroid.domain.model.Connection
 
@@ -27,9 +28,19 @@ interface CodexSessionRepository {
         collaborationMode: JsonElement?,
     ): CodexResponse<TurnStartResult>
 
+    suspend fun steerTurn(
+        baseUrl: String,
+        secret: String?,
+        threadId: String,
+        turnId: String,
+        text: String,
+    ): CodexResponse<TurnSteerResult>
+
     suspend fun readThread(baseUrl: String, secret: String?, threadId: String): CodexResponse<ThreadReadResult>
 
     suspend fun listModels(baseUrl: String, secret: String?): CodexResponse<JsonElement>
+
+    suspend fun listCollaborationModes(baseUrl: String, secret: String?): CodexResponse<JsonElement>
 
     suspend fun listExperimentalFeatures(
         baseUrl: String,

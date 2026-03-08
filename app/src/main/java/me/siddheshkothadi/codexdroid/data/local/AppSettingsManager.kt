@@ -37,6 +37,7 @@ class AppSettingsManager @Inject constructor(
 
     private val lastSessionModelKey = stringPreferencesKey("session_last_model")
     private val lastSessionEffortKey = stringPreferencesKey("session_last_effort")
+    private val followUpMessageBehaviorKey = stringPreferencesKey("session_follow_up_behavior")
     private val approvalAllowRulesKey = stringPreferencesKey("approval_allow_rules_json")
 
     private val voiceKey = stringPreferencesKey("sarvam_voice")
@@ -93,15 +94,32 @@ class AppSettingsManager @Inject constructor(
         return runCatching { cryptoManager.decrypt(encrypted) }.getOrNull()?.trim()?.takeIf { it.isNotEmpty() }
     }
 
-    suspend fun updateSessionControlDefaults(model: String?, effort: String?) {
+    suspend fun updateSessionControlDefaults(
+        model: String?,
+        effort: String?,
+        followUpMessageBehavior: String? = null,
+    ) {
         val normalizedModel = model?.trim()?.takeIf { it.isNotEmpty() }
         val normalizedEffort = effort?.trim()?.takeIf { it.isNotEmpty() }
+        val normalizedFollowUpBehavior =
+            followUpMessageBehavior
+                ?.trim()
+                ?.lowercase()
+                ?.takeIf { it == "queue" || it == "steer" }
         context.appSettingsDataStore.edit { preferences ->
             if (normalizedModel == null) preferences.remove(lastSessionModelKey)
             else preferences[lastSessionModelKey] = normalizedModel
 
             if (normalizedEffort == null) preferences.remove(lastSessionEffortKey)
             else preferences[lastSessionEffortKey] = normalizedEffort
+
+            if (normalizedFollowUpBehavior == null) {
+                if (followUpMessageBehavior != null) {
+                    preferences.remove(followUpMessageBehaviorKey)
+                }
+            } else {
+                preferences[followUpMessageBehaviorKey] = normalizedFollowUpBehavior
+            }
         }
     }
 
@@ -110,6 +128,12 @@ class AppSettingsManager @Inject constructor(
         return SessionControlDefaults(
             model = preferences[lastSessionModelKey]?.trim()?.takeIf { it.isNotEmpty() },
             effort = preferences[lastSessionEffortKey]?.trim()?.takeIf { it.isNotEmpty() },
+            followUpMessageBehavior =
+                preferences[followUpMessageBehaviorKey]
+                    ?.trim()
+                    ?.lowercase()
+                    ?.takeIf { it == "queue" || it == "steer" }
+                    ?: "queue",
         )
     }
 

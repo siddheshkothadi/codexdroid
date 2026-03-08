@@ -57,6 +57,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import me.siddheshkothadi.codexdroid.codex.requests.ApprovalRules
+import me.siddheshkothadi.codexdroid.codex.requests.UserInputOption
 
 /**
  * Main session screen for chatting with Codex.
@@ -100,6 +101,12 @@ fun SessionScreen(
         val notice = uiState.ttsNotice ?: return@LaunchedEffect
         snackbarHostState.showSnackbar(notice)
         viewModel.onTtsNoticeShown()
+    }
+
+    LaunchedEffect(uiState.error) {
+        val message = uiState.error ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(message)
+        viewModel.clearError()
     }
 
     val cwdPresets =
@@ -225,8 +232,8 @@ fun SessionScreen(
                 ChatInput(
                     text = inputText,
                     onTextChange = { inputText = it },
-                    onSend = {
-                        viewModel.sendMessage(inputText)
+                    onSend = { intent ->
+                        viewModel.sendMessage(inputText, intent)
                         inputText = ""
                     },
                     onStop = { viewModel.stopCurrentTurn() },
@@ -234,7 +241,7 @@ fun SessionScreen(
                         viewModel.refreshControls()
                         showControlsSheet = true
                     },
-                    enabled = !uiState.isSending,
+                    enabled = canSend,
                     isSending = uiState.isSending
                     ,
                     canSend = canSend,
@@ -242,6 +249,11 @@ fun SessionScreen(
                     selectedEffortLabel = selectedEffortLabel,
                     planModeEnabled = uiState.planModeEnabled,
                     onDisablePlanMode = { viewModel.setPlanModeEnabled(false) },
+                    followUpMessageBehavior = uiState.followUpMessageBehavior,
+                    queuedMessages = uiState.queuedMessages,
+                    queuePausedReason = uiState.queuePausedReason,
+                    onSteerQueued = viewModel::steerQueuedMessage,
+                    onDeleteQueued = viewModel::removeQueuedMessage,
                 )
             },
             snackbarHost = {
@@ -250,7 +262,6 @@ fun SessionScreen(
         ) { padding ->
             Box(modifier = Modifier.padding(padding).fillMaxSize().background(CodexTheme.colors.bgPrimary)) {
                 when {
-                    uiState.error != null -> ErrorView(uiState.error!!) { viewModel.sendMessage(inputText) }
                     uiState.currentThread != null && uiState.currentThread!!.turns.isEmpty() && uiState.isThreadSyncing -> SessionSkeleton()
                     uiState.currentThread == null && uiState.pendingUserMessage == null -> EmptyView()
                     uiState.currentThread == null && uiState.pendingUserMessage != null ->
@@ -272,6 +283,9 @@ fun SessionScreen(
                             scrollToTurnId = uiState.scrollToTurnId,
                             turnSpeechController = turnSpeechController,
                             onScrollToTurnHandled = { viewModel.clearScrollTarget() },
+                            planReadyTurnId = uiState.planReadyTurnId,
+                            onPlanAccept = { viewModel.sendPlanReadyAcceptance() },
+                            onPlanSubmitChanges = { viewModel.sendPlanReadyChanges(it) },
                         )
                 }
             }
@@ -395,14 +409,37 @@ fun SessionScreen(
 
     uiState.pendingUserInput?.let { req ->
         val requestKey = "userInput:${req.requestId}"
-        val selections = rememberSaveable(requestKey) { mutableStateMapOf<String, String>() }
-        val notes = rememberSaveable(requestKey) { mutableStateMapOf<String, String>() }
+        val selections =
+            remember(requestKey) {
+                mutableStateMapOf<String, String>().apply {
+                    req.questions.forEach { question ->
+                        val firstOption = question.options.firstOrNull()
+                        val defaultValue =
+                            firstOption
+                                ?.let { optionSelectionValue(it) }
+                                ?.takeIf { it.isNotBlank() }
+                        if (defaultValue != null) {
+                            this[question.id] = defaultValue
+                        }
+                    }
+                }
+            }
+        val notes = remember(requestKey) { mutableStateMapOf<String, String>() }
+        var questionIndex by remember(requestKey) { mutableStateOf(0) }
+        val currentQuestion = req.questions.getOrNull(questionIndex)
         AlertDialog(
             onDismissRequest = { /* keep until answered */ },
             title = { Text("Input needed") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    req.questions.forEach { q ->
+                    if (req.questions.size > 1) {
+                        Text(
+                            text = "Question ${questionIndex + 1} of ${req.questions.size}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = CodexTheme.colors.textSecondary,
+                        )
+                    }
+                    currentQuestion?.let { q ->
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (q.header.isNotBlank()) {
                                 Text(q.header, style = MaterialTheme.typography.labelMedium)
@@ -413,32 +450,37 @@ fun SessionScreen(
 
                             val selected = selections[q.id].orEmpty()
                             if (q.options.isNotEmpty()) {
-                                q.options.forEach { opt ->
-                                    val label = opt.label.ifBlank { opt.description }
-                                    Row(
-                                        modifier =
-                                            Modifier
-                                                .fillMaxWidth()
-                                                .clickable { selections[q.id] = label },
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        RadioButton(
-                                            selected = selected == label,
-                                            onClick = { selections[q.id] = label }
-                                        )
-                                        Spacer(Modifier.width(8.dp))
-                                        Column {
-                                            Text(
-                                                opt.label.ifBlank { "(option)" },
-                                                maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis,
+                                Column(
+                                    modifier = Modifier.heightIn(max = 240.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    q.options.forEach { opt ->
+                                        val optionValue = optionSelectionValue(opt)
+                                        Row(
+                                            modifier =
+                                                Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable { selections[q.id] = optionValue },
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            RadioButton(
+                                                selected = selected == optionValue,
+                                                onClick = { selections[q.id] = optionValue }
                                             )
-                                            if (opt.description.isNotBlank()) {
+                                            Spacer(Modifier.width(8.dp))
+                                            Column {
                                                 Text(
-                                                    opt.description,
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = CodexTheme.colors.textSecondary
+                                                    opt.label.ifBlank { "(option)" },
+                                                    maxLines = 2,
+                                                    overflow = TextOverflow.Ellipsis,
                                                 )
+                                                if (opt.description.isNotBlank()) {
+                                                    Text(
+                                                        opt.description,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = CodexTheme.colors.textSecondary
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -455,23 +497,28 @@ fun SessionScreen(
                                 onValueChange = { notes[q.id] = it },
                                 placeholder = { Text(notePlaceholder) },
                                 modifier = Modifier.fillMaxWidth(),
-                                minLines = 2,
-                                maxLines = 4,
+                                minLines = 1,
+                                maxLines = 3,
                             )
                         }
                     }
                 }
             },
             confirmButton = {
-                val canSubmit =
-                    req.questions.all { q ->
+                val canAdvance =
+                    currentQuestion?.let { q ->
                         val selected = selections[q.id]?.isNotBlank() == true
                         val hasNotes = notes[q.id]?.isNotBlank() == true
                         if (q.options.isEmpty()) true else selected || (q.isOther && hasNotes)
-                    }
+                    } ?: false
+                val isLastQuestion = questionIndex >= req.questions.lastIndex
                 TextButton(
-                    enabled = canSubmit,
+                    enabled = canAdvance,
                     onClick = {
+                        if (!isLastQuestion) {
+                            questionIndex += 1
+                            return@TextButton
+                        }
                         val answers =
                             req.questions.associate { q ->
                                 val answerList = mutableListOf<String>()
@@ -488,15 +535,20 @@ fun SessionScreen(
                             }
                         viewModel.submitUserInput(answers)
                     }
-                ) { Text("Submit") }
+                ) { Text(if (isLastQuestion) "Submit" else "Next") }
             },
             dismissButton = {
-                TextButton(
-                    onClick = {
-                        // Best-effort: empty answers signals "no response"; server may treat this as decline/cancel.
-                        viewModel.submitUserInput(emptyMap())
+                Row {
+                    if (questionIndex > 0) {
+                        TextButton(onClick = { questionIndex -= 1 }) { Text("Back") }
                     }
-                ) { Text("Cancel") }
+                    TextButton(
+                        onClick = {
+                            // Best-effort: empty answers signals "no response"; server may treat this as decline/cancel.
+                            viewModel.submitUserInput(emptyMap())
+                        }
+                    ) { Text("Cancel") }
+                }
             }
         )
     }
@@ -985,6 +1037,9 @@ private fun MessageList(
     scrollToTurnId: String?,
     turnSpeechController: TurnTextToSpeechController,
     onScrollToTurnHandled: () -> Unit,
+    planReadyTurnId: String?,
+    onPlanAccept: () -> Unit,
+    onPlanSubmitChanges: (String) -> Unit,
 ) {
     val showLiveIndicators = showLiveActivityInList && (isSending || runningStatus != null)
     val timelineEntries = remember(thread.turns) { buildTimelineEntries(thread.turns) }
@@ -1061,6 +1116,14 @@ private fun MessageList(
                             entry = entry,
                             turnSpeechController = turnSpeechController,
                         )
+                }
+            }
+            if (!planReadyTurnId.isNullOrBlank()) {
+                item(key = "plan-ready-$planReadyTurnId") {
+                    PlanReadyCard(
+                        onAccept = onPlanAccept,
+                        onSubmitChanges = onPlanSubmitChanges,
+                    )
                 }
             }
         }
@@ -1267,6 +1330,7 @@ private fun buildTimelineEntries(turns: List<Turn>): List<ThreadTimelineEntry> {
                     val hasContent = item.summary.any { it.isNotBlank() } || item.content.any { it.isNotBlank() }
                     if (!hasContent) return@mapNotNull null
                 }
+                if (isInternalTaggedMessage(item)) return@mapNotNull null
                 ThreadTimelineEntry.ItemEntry(
                     key = "$turnIdx-$itemIdx-${item.id}",
                     turnId = turn.id,
@@ -1288,6 +1352,12 @@ private fun buildTimelineEntries(turns: List<Turn>): List<ThreadTimelineEntry> {
         }
     }
     return entries
+}
+
+private fun isInternalTaggedMessage(item: ThreadItem): Boolean {
+    val message = item as? ThreadItem.UserMessage ?: return false
+    val text = message.content.joinToString(separator = "") { it.text.orEmpty() }
+    return text.trimStart().startsWith("[[cm_plan_ready:")
 }
 
 private data class TurnSpeechPayload(
@@ -1740,12 +1810,16 @@ private fun ErrorView(message: String, onRetry: () -> Unit) {
     }
 }
 
+private fun optionSelectionValue(option: UserInputOption): String {
+    return option.label.ifBlank { option.description }.ifBlank { "(option)" }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ChatInput(
     text: String,
     onTextChange: (String) -> Unit,
-    onSend: () -> Unit,
+    onSend: (ComposerSubmitIntent) -> Unit,
     onStop: () -> Unit,
     onControls: () -> Unit,
     enabled: Boolean,
@@ -1755,6 +1829,11 @@ fun ChatInput(
     selectedEffortLabel: String?,
     planModeEnabled: Boolean,
     onDisablePlanMode: () -> Unit,
+    followUpMessageBehavior: FollowUpMessageBehavior,
+    queuedMessages: List<QueuedMessageUi>,
+    queuePausedReason: String?,
+    onSteerQueued: (String) -> Unit,
+    onDeleteQueued: (String) -> Unit,
 ) {
     val colors = CodexTheme.colors
     val toolsButtonBackground = colors.neutralIconButtonBackground
@@ -1803,6 +1882,15 @@ fun ChatInput(
                             .fillMaxWidth()
                             .padding(start = 10.dp, end = 4.dp, top = 8.dp, bottom = 4.dp),
                 ) {
+                    if (queuedMessages.isNotEmpty()) {
+                        QueuedMessagesStrip(
+                            messages = queuedMessages,
+                            pausedReason = queuePausedReason,
+                            onSteerQueued = onSteerQueued,
+                            onDeleteQueued = onDeleteQueued,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                    }
                     if (hasMetaChips) {
                         FlowRow(
                             modifier = Modifier.fillMaxWidth(),
@@ -1847,25 +1935,38 @@ fun ChatInput(
                         maxLines = 5,
                         enabled = enabled,
                         trailingIcon = {
-                            if (isSending) {
-                                FilledIconButton(
-                                    onClick = onStop,
-                                    colors = IconButtonDefaults.filledIconButtonColors(
-                                        containerColor = toolsButtonBackground,
-                                        contentColor = toolsButtonIcon
-                                    ),
-                                    modifier = Modifier.padding(end = 4.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.Stop,
-                                        contentDescription = "Stop session"
-                                    )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (isSending) {
+                                    FilledIconButton(
+                                        onClick = onStop,
+                                        colors = IconButtonDefaults.filledIconButtonColors(
+                                            containerColor = toolsButtonBackground,
+                                            contentColor = toolsButtonIcon
+                                        ),
+                                        modifier = Modifier.padding(end = 4.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Stop,
+                                            contentDescription = "Stop session"
+                                        )
+                                    }
                                 }
-                            } else {
                                 val canShowSend = enabled && canSend && text.trim().isNotEmpty()
                                 if (canShowSend) {
                                     FilledIconButton(
-                                        onClick = onSend,
+                                        onClick = {
+                                            onSend(
+                                                if (isSending) {
+                                                    if (followUpMessageBehavior == FollowUpMessageBehavior.Steer) {
+                                                        ComposerSubmitIntent.Steer
+                                                    } else {
+                                                        ComposerSubmitIntent.Queue
+                                                    }
+                                                } else {
+                                                    ComposerSubmitIntent.Default
+                                                }
+                                            )
+                                        },
                                         colors = IconButtonDefaults.filledIconButtonColors(
                                             containerColor = colors.accentAction,
                                             contentColor = colors.onAccentAction
@@ -1874,7 +1975,14 @@ fun ChatInput(
                                     ) {
                                         Icon(
                                             Icons.Default.ArrowUpward,
-                                            contentDescription = "Send"
+                                            contentDescription =
+                                                if (isSending && followUpMessageBehavior == FollowUpMessageBehavior.Steer) {
+                                                    "Steer"
+                                                } else if (isSending) {
+                                                    "Queue"
+                                                } else {
+                                                    "Send"
+                                                }
                                         )
                                     }
                                 }
@@ -1894,6 +2002,96 @@ fun ChatInput(
                             disabledPlaceholderColor = colors.textSecondary,
                         )
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QueuedMessagesStrip(
+    messages: List<QueuedMessageUi>,
+    pausedReason: String?,
+    onSteerQueued: (String) -> Unit,
+    onDeleteQueued: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = "Queued messages",
+            style = MaterialTheme.typography.labelSmall,
+            color = CodexTheme.colors.textSecondary,
+        )
+        messages.take(3).forEach { message ->
+            Surface(
+                color = CodexTheme.colors.bgSecondary,
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = message.text,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    TextButton(onClick = { onSteerQueued(message.id) }) { Text("Steer") }
+                    TextButton(onClick = { onDeleteQueued(message.id) }) { Text("Remove") }
+                }
+            }
+        }
+        pausedReason?.takeIf { it.isNotBlank() }?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = CodexTheme.colors.textSecondary,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PlanReadyCard(
+    onAccept: () -> Unit,
+    onSubmitChanges: (String) -> Unit,
+) {
+    var changes by rememberSaveable { mutableStateOf("") }
+    Surface(
+        color = CodexTheme.colors.bgSecondary,
+        shape = RoundedCornerShape(18.dp),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("Plan ready", style = MaterialTheme.typography.titleSmall, color = CodexTheme.colors.textPrimary)
+            Text(
+                "Start building from this plan, or describe changes to the plan.",
+                style = MaterialTheme.typography.bodySmall,
+                color = CodexTheme.colors.textSecondary,
+            )
+            OutlinedTextField(
+                value = changes,
+                onValueChange = { changes = it },
+                placeholder = { Text("Describe what you want to change in the plan...") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 2,
+                maxLines = 4,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(
+                    onClick = {
+                        onSubmitChanges(changes)
+                        changes = ""
+                    },
+                    enabled = changes.trim().isNotEmpty(),
+                ) {
+                    Text("Send changes")
+                }
+                Button(onClick = onAccept) {
+                    Text("Implement this plan")
                 }
             }
         }

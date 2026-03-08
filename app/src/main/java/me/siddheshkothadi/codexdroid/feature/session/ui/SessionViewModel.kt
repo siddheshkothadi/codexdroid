@@ -14,6 +14,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -28,6 +29,30 @@ import me.siddheshkothadi.codexdroid.codex.requests.UserInputPendingRequest
 import me.siddheshkothadi.codexdroid.domain.model.Connection
 import me.siddheshkothadi.codexdroid.domain.usecase.*
 import javax.inject.Inject
+
+enum class FollowUpMessageBehavior {
+    Queue,
+    Steer,
+}
+
+enum class ComposerSubmitIntent {
+    Default,
+    Queue,
+    Steer,
+}
+
+data class QueuedMessageUi(
+    val id: String,
+    val text: String,
+    val createdAt: Long,
+)
+
+data class CollaborationModeOptionUi(
+    val id: String,
+    val mode: String,
+    val label: String,
+    val developerInstructions: String? = null,
+)
 
 /**
  * UI State for the Session Screen.
@@ -56,8 +81,15 @@ data class SessionUiState(
     val selectedModelId: String? = null,
     val selectedEffort: String? = null,
     val planModeEnabled: Boolean = false,
+    val followUpMessageBehavior: FollowUpMessageBehavior = FollowUpMessageBehavior.Queue,
+    val queuedMessages: List<QueuedMessageUi> = emptyList(),
+    val queuePausedReason: String? = null,
+    val collaborationModes: List<CollaborationModeOptionUi> = emptyList(),
+    val collaborationModeSupported: Boolean = false,
     val controlsError: String? = null,
     val ttsNotice: String? = null,
+    val lastPlanTurnId: String? = null,
+    val planReadyTurnId: String? = null,
 )
 
 data class ModelOptionUi(
@@ -98,7 +130,9 @@ class SessionViewModel @Inject constructor(
     private val interruptTurnUseCase: InterruptTurnUseCase,
     private val listModelsUseCase: ListModelsUseCase,
     private val listSkillsUseCase: ListSkillsUseCase,
+    private val listCollaborationModesUseCase: ListCollaborationModesUseCase,
     private val readConfigUseCase: ReadConfigUseCase,
+    private val steerTurnUseCase: SteerTurnUseCase,
     private val respondToApprovalRequestUseCase: RespondToApprovalRequestUseCase,
     private val respondToUserInputRequestUseCase: RespondToUserInputRequestUseCase,
     private val getSessionControlDefaultsUseCase: GetSessionControlDefaultsUseCase,
@@ -123,6 +157,7 @@ class SessionViewModel @Inject constructor(
     private val ttsNoticeLock = Any()
     private var didShowSarvamFallbackNotice: Boolean = false
     private val pendingRequestQueue: PendingRequestQueue = InMemoryPendingRequestQueue()
+    private val queuedMessagesByThread = mutableMapOf<String, MutableList<QueuedMessageUi>>()
 
     private val _uiState = MutableStateFlow(SessionUiState())
     val uiState: StateFlow<SessionUiState> = _uiState.asStateFlow()
@@ -155,6 +190,12 @@ class SessionViewModel @Inject constructor(
 
     fun setPlanModeEnabled(enabled: Boolean) {
         _uiState.update { it.copy(planModeEnabled = enabled) }
+    }
+
+    fun setFollowUpMessageBehavior(behavior: FollowUpMessageBehavior) {
+        _uiState.update { it.copy(followUpMessageBehavior = behavior) }
+        val modelSlug = resolveModelSlug(_uiState.value.selectedModelId)
+        persistControlPreferences(model = modelSlug, effort = _uiState.value.selectedEffort, followUpMessageBehavior = behavior)
     }
 
     fun applyModelSelection(modelId: String?) {
@@ -216,7 +257,12 @@ class SessionViewModel @Inject constructor(
         persistControlPreferences(model = modelSlug, effort = nextEffort)
     }
 
-    fun saveControlsSelection(modelId: String?, effort: String?, planModeEnabled: Boolean) {
+    fun saveControlsSelection(
+        modelId: String?,
+        effort: String?,
+        planModeEnabled: Boolean,
+        followUpMessageBehavior: FollowUpMessageBehavior = _uiState.value.followUpMessageBehavior,
+    ) {
         val normalizedModel = modelId?.takeIf { it.isNotBlank() }
         val normalizedEffort = effort?.takeIf { it.isNotBlank() }
         _uiState.update {
@@ -224,15 +270,26 @@ class SessionViewModel @Inject constructor(
                 selectedModelId = normalizedModel,
                 selectedEffort = normalizedEffort,
                 planModeEnabled = planModeEnabled,
+                followUpMessageBehavior = followUpMessageBehavior,
             )
         }
         val modelSlug = resolveModelSlug(modelId = normalizedModel)
-        persistControlPreferences(model = modelSlug, effort = normalizedEffort)
+        persistControlPreferences(model = modelSlug, effort = normalizedEffort, followUpMessageBehavior = followUpMessageBehavior)
     }
 
-    private fun persistControlPreferences(model: String?, effort: String?) {
+    private fun persistControlPreferences(
+        model: String?,
+        effort: String?,
+        followUpMessageBehavior: FollowUpMessageBehavior = _uiState.value.followUpMessageBehavior,
+    ) {
         viewModelScope.launch {
-            runCatching { saveSessionControlDefaultsUseCase(model, effort) }
+            runCatching {
+                saveSessionControlDefaultsUseCase(
+                    model,
+                    effort,
+                    followUpMessageBehavior = followUpMessageBehavior.name.lowercase(),
+                )
+            }
                 .onFailure { Log.w(tag, "Failed to persist session control defaults", it) }
 
             val conn = connections.value.firstOrNull() ?: return@launch
@@ -258,11 +315,14 @@ class SessionViewModel @Inject constructor(
         try {
             val modelsResp = runCatching { listModelsUseCase(connection.baseUrl, connection.secret) }.getOrNull()
             val skillsResp = runCatching { listSkillsUseCase(connection.baseUrl, connection.secret, cwd) }.getOrNull()
+            val collaborationModesResp =
+                runCatching { listCollaborationModesUseCase(connection.baseUrl, connection.secret) }.getOrNull()
             val configResp = runCatching { readConfigUseCase(connection.baseUrl, connection.secret) }.getOrNull()
             val appDefaults = runCatching { getSessionControlDefaultsUseCase() }.getOrNull()
 
             val models = modelsResp?.result?.let { SessionControlsParser.parseModels(it) }.orEmpty()
             val skills = skillsResp?.result?.let { SessionControlsParser.parseSkills(it) }.orEmpty()
+            val collaborationModes = collaborationModesResp?.result?.let(::parseCollaborationModes).orEmpty()
             val (configModel, configEffort) =
                 configResp?.result?.let { SessionControlsParser.parseConfigPreferences(it) } ?: (null to null)
 
@@ -275,7 +335,14 @@ class SessionViewModel @Inject constructor(
                 }
 
             _uiState.update { state ->
-                var next = state.copy(models = models, skills = skills, controlsError = error)
+                var next =
+                    state.copy(
+                        models = models,
+                        skills = skills,
+                        collaborationModes = collaborationModes,
+                        collaborationModeSupported = collaborationModesResp?.error == null && collaborationModes.isNotEmpty(),
+                        controlsError = error,
+                    )
 
                 val threadPreferredModel =
                     next.currentThread?.clientModel
@@ -321,6 +388,18 @@ class SessionViewModel @Inject constructor(
 
                 if (resolvedEffort != next.selectedEffort) {
                     next = next.copy(selectedEffort = resolvedEffort)
+                }
+
+                val resolvedFollowUpBehavior =
+                    appDefaults?.followUpMessageBehavior
+                        ?.trim()
+                        ?.lowercase()
+                        ?.let {
+                            if (it == "steer") FollowUpMessageBehavior.Steer else FollowUpMessageBehavior.Queue
+                        }
+                        ?: next.followUpMessageBehavior
+                if (resolvedFollowUpBehavior != next.followUpMessageBehavior) {
+                    next = next.copy(followUpMessageBehavior = resolvedFollowUpBehavior)
                 }
 
                 next
@@ -493,11 +572,13 @@ class SessionViewModel @Inject constructor(
 
     private fun maybeShowNextPending() {
         _uiState.update { state ->
-            state.copy(
+            val next =
+                state.copy(
                 pendingApproval = pendingRequestQueue.nextApproval(state.pendingApproval),
                 pendingUserInput = pendingRequestQueue.nextUserInput(state.pendingUserInput),
                 pendingUnknownRequest = pendingRequestQueue.nextUnknown(state.pendingUnknownRequest),
-            )
+                )
+            next.copy(queuePausedReason = queuePausedReason(next))
         }
     }
 
@@ -552,6 +633,10 @@ class SessionViewModel @Inject constructor(
         _uiState.update { it.copy(ttsNotice = null) }
     }
 
+    fun clearError() {
+        _uiState.update { it.copy(error = null) }
+    }
+
     private fun maybePublishSarvamFallbackNotice() {
         val shouldNotify =
             synchronized(ttsNoticeLock) {
@@ -567,12 +652,29 @@ class SessionViewModel @Inject constructor(
 
     // --- Actions ---
 
-    fun sendMessage(text: String) {
+    fun sendMessage(text: String, submitIntent: ComposerSubmitIntent = ComposerSubmitIntent.Default) {
         val connection = connections.value.firstOrNull() ?: return
         viewModelScope.launch {
+            val trimmed = text.trim()
+            if (trimmed.isBlank()) return@launch
             if (_uiState.value.connectionStatus != ConnectionStatus.Healthy) {
                 _uiState.update { it.copy(error = "Not connected to server", isSending = false) }
                 return@launch
+            }
+            val currentThreadId = _uiState.value.currentThread?.id
+            if (_uiState.value.isSending && currentThreadId != null) {
+                when (resolveFollowUpIntent(submitIntent)) {
+                    ComposerSubmitIntent.Queue -> {
+                        enqueueQueuedMessage(currentThreadId, trimmed)
+                        return@launch
+                    }
+                    ComposerSubmitIntent.Steer -> {
+                        if (attemptSteer(connection, currentThreadId, trimmed)) return@launch
+                        enqueueQueuedMessage(currentThreadId, trimmed)
+                        return@launch
+                    }
+                    ComposerSubmitIntent.Default -> Unit
+                }
             }
             pollJob?.cancel()
             // Prime the "last event" timestamp so the poll fallback doesn't immediately treat the stream as quiet
@@ -580,12 +682,22 @@ class SessionViewModel @Inject constructor(
             val now = System.currentTimeMillis()
             sendingStartedAtMs = now
             lastEventAtMs = now
-            _uiState.update { it.copy(isSending = true, error = null, activeTurnId = null, pendingUserMessage = text) }
+            val shouldHidePendingMessage = trimmed.startsWith("[[cm_plan_ready:")
+            _uiState.update { it.copy(isSending = true, error = null, activeTurnId = null, pendingUserMessage = trimmed) }
+            if (shouldHidePendingMessage) {
+                _uiState.update { it.copy(pendingUserMessage = null, planReadyTurnId = null) }
+            }
             
             try {
                 val resolvedModel = resolveModelSlug(_uiState.value.selectedModelId)
                 val resolvedEffort = _uiState.value.selectedEffort?.takeIf { it.isNotBlank() }
-                runCatching { saveSessionControlDefaultsUseCase(resolvedModel, resolvedEffort) }
+                runCatching {
+                    saveSessionControlDefaultsUseCase(
+                        resolvedModel,
+                        resolvedEffort,
+                        followUpMessageBehavior = _uiState.value.followUpMessageBehavior.name.lowercase(),
+                    )
+                }
 
                 // 1. Ensure thread
                 var thread = _uiState.value.currentThread
@@ -619,19 +731,39 @@ class SessionViewModel @Inject constructor(
                     } else {
                         null
                     }
+                Log.d(
+                    tag,
+                    "Starting turn threadId=${thread.id} planMode=${_uiState.value.planModeEnabled} collaborationMode=${collaborationMode?.toString() ?: "null"}"
+                )
                 val turnResp =
                     startTurnUseCase(
                         baseUrl = connection.baseUrl,
                         secret = connection.secret,
                         threadId = thread.id,
-                        text = text,
+                        text = trimmed,
                         cwd = effectiveCwd,
                         model = resolvedModel,
                         effort = resolvedEffort,
                         collaborationMode = collaborationMode,
                     )
+                if (turnResp.error != null) {
+                    Log.w(
+                        tag,
+                        "turn/start rpc error threadId=${thread.id} message=${turnResp.error.message}"
+                    )
+                } else {
+                    Log.d(
+                        tag,
+                        "turn/start ok threadId=${thread.id} turnId=${turnResp.result?.turn?.id.orEmpty()}"
+                    )
+                }
                 val turnId = turnResp.result?.turn?.id ?: throw Exception(turnResp.error?.message)
-                _uiState.update { it.copy(activeTurnId = turnId) }
+                _uiState.update {
+                    it.copy(
+                        activeTurnId = turnId,
+                        planReadyTurnId = null,
+                    )
+                }
 
                 // 3. Fallback poll
                 pollJob = viewModelScope.launch {
@@ -651,9 +783,53 @@ class SessionViewModel @Inject constructor(
                     _uiState.update { it.copy(isHistorySyncing = false) }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isSending = false, error = e.message, activeTurnId = null, pendingUserMessage = null) }
+                Log.w(tag, "sendMessage failed", e)
+                val maybeCapabilityError = e.message?.takeIf { it.contains("experimentalApi capability", ignoreCase = true) }
+                _uiState.update {
+                    it.copy(
+                        isSending = false,
+                        error = maybeCapabilityError ?: e.message,
+                        activeTurnId = null,
+                        pendingUserMessage = null,
+                        collaborationModeSupported =
+                            if (maybeCapabilityError != null) false else it.collaborationModeSupported,
+                    )
+                }
             }
         }
+    }
+
+    fun sendPlanReadyAcceptance() {
+        _uiState.update { it.copy(planModeEnabled = false, planReadyTurnId = null) }
+        sendMessage("[[cm_plan_ready:accept]] Implement this plan.")
+    }
+
+    fun sendPlanReadyChanges(changes: String) {
+        val trimmed = changes.trim()
+        if (trimmed.isBlank()) return
+        _uiState.update { it.copy(planModeEnabled = true, planReadyTurnId = null) }
+        sendMessage("[[cm_plan_ready:changes]] Update the plan with these changes:\n\n$trimmed")
+    }
+
+    fun steerQueuedMessage(messageId: String) {
+        val connection = connections.value.firstOrNull() ?: return
+        val threadId = _uiState.value.currentThread?.id ?: return
+        val message =
+            queuedMessagesByThread[threadId]
+                ?.firstOrNull { it.id == messageId }
+                ?: return
+        viewModelScope.launch {
+            if (attemptSteer(connection, threadId, message.text)) {
+                removeQueuedMessage(threadId, messageId)
+            } else {
+                _uiState.update { it.copy(error = "Steer is unavailable for the current turn. Message kept in queue.") }
+            }
+        }
+    }
+
+    fun removeQueuedMessage(messageId: String) {
+        val threadId = _uiState.value.currentThread?.id ?: return
+        removeQueuedMessage(threadId, messageId)
     }
 
     fun selectThread(thread: Thread) {
@@ -698,15 +874,20 @@ class SessionViewModel @Inject constructor(
     }
 
     private fun buildPlanCollaborationMode(model: String?, effort: String?): JsonObject {
+        val planMode =
+            _uiState.value.collaborationModes.firstOrNull { mode ->
+                mode.id.equals("plan", ignoreCase = true) || mode.mode.equals("plan", ignoreCase = true)
+            }
         val normalizedModel = model?.takeIf { it.isNotBlank() }
         val normalizedEffort = effort?.takeIf { it.isNotBlank() }
         val settings =
             buildJsonObject {
+                put("developer_instructions", JsonNull)
                 normalizedModel?.let { put("model", it) }
                 normalizedEffort?.let { put("reasoning_effort", it) }
             }
         return buildJsonObject {
-            put("mode", "plan")
+            put("mode", planMode?.mode ?: "plan")
             put("settings", settings)
         }
     }
@@ -844,6 +1025,9 @@ class SessionViewModel @Inject constructor(
                 isSending = false,
                 pendingUserMessage = null,
                 scrollToTurnId = null,
+                queuedMessages = emptyList(),
+                queuePausedReason = null,
+                planReadyTurnId = null,
             )
         }
     }
@@ -857,6 +1041,7 @@ class SessionViewModel @Inject constructor(
                     if (t == null) return@collect
                     val now = System.currentTimeMillis()
                     val runningTurn = t.turns.lastOrNull { it.status == TurnStatus.inProgress }
+                    val latestPlanTurnId = latestPlanTurnId(t)
 
                     if (_uiState.value.isSending || runningTurn != null) {
                         lastEventAtMs = now
@@ -874,7 +1059,9 @@ class SessionViewModel @Inject constructor(
                         var next =
                             state.copy(
                                 currentThread = t,
-                                selectedCwd = t.cwd.takeIf { it.isNotBlank() }
+                                selectedCwd = t.cwd.takeIf { it.isNotBlank() },
+                                queuedMessages = queuedMessagesByThread[t.id].orEmpty().toList(),
+                                lastPlanTurnId = latestPlanTurnId,
                             )
 
                         if (threadChanged) {
@@ -913,7 +1100,16 @@ class SessionViewModel @Inject constructor(
                             next = next.copy(isSending = false, activeTurnId = null, pendingUserMessage = null)
                         }
 
+                        if (latestPlanTurnId != null && latestPlanTurnId != state.lastPlanTurnId) {
+                            next = next.copy(planReadyTurnId = latestPlanTurnId)
+                        }
+                        next = next.copy(queuePausedReason = queuePausedReason(next))
+
                         next
+                    }
+
+                    if (runningTurn == null) {
+                        flushQueuedMessages(connectionId = connectionId, thread = t)
                     }
 
                     val activeConnection = connections.value.firstOrNull()
@@ -1071,6 +1267,7 @@ class SessionViewModel @Inject constructor(
                     pendingUserMessage = null,
                     selectedModelId = null,
                     selectedEffort = null,
+                    queuedMessages = emptyList(),
                 )
             }
         }
@@ -1103,6 +1300,133 @@ class SessionViewModel @Inject constructor(
 
     private fun currentRunningTurnId(): String? =
         _uiState.value.currentThread?.turns?.firstOrNull { it.status == TurnStatus.inProgress }?.id
+
+    private fun latestPlanTurnId(thread: Thread): String? {
+        return thread.turns
+            .asReversed()
+            .firstOrNull { turn ->
+                turn.items.any { item ->
+                    when (item) {
+                        is ThreadItem.PlanUpdate -> item.plan.isNotEmpty() || !item.explanation.isNullOrBlank()
+                        is ThreadItem.Plan -> item.text.isNotBlank() || item.status.isNotBlank()
+                        else -> false
+                    }
+                }
+            }
+            ?.id
+    }
+
+    private fun flushQueuedMessages(connectionId: String, thread: Thread) {
+        val queue = queuedMessagesByThread[thread.id].orEmpty()
+        if (queue.isEmpty()) return
+        val state = _uiState.value
+        if (state.queuePausedReason != null || state.isSending) return
+        val next = queue.firstOrNull() ?: return
+        removeQueuedMessage(thread.id, next.id)
+        if (connections.value.firstOrNull()?.id != connectionId) return
+        viewModelScope.launch {
+            sendMessage(next.text, ComposerSubmitIntent.Default)
+        }
+    }
+
+    private fun resolveFollowUpIntent(submitIntent: ComposerSubmitIntent): ComposerSubmitIntent {
+        if (!_uiState.value.isSending) return ComposerSubmitIntent.Default
+        return when (submitIntent) {
+            ComposerSubmitIntent.Queue -> ComposerSubmitIntent.Queue
+            ComposerSubmitIntent.Steer -> ComposerSubmitIntent.Steer
+            ComposerSubmitIntent.Default ->
+                if (_uiState.value.followUpMessageBehavior == FollowUpMessageBehavior.Steer) {
+                    ComposerSubmitIntent.Steer
+                } else {
+                    ComposerSubmitIntent.Queue
+                }
+        }
+    }
+
+    private suspend fun attemptSteer(connection: Connection, threadId: String, text: String): Boolean {
+        val turnId = _uiState.value.activeTurnId ?: currentRunningTurnId() ?: return false
+        return runCatching {
+            val response =
+                steerTurnUseCase(
+                    baseUrl = connection.baseUrl,
+                    secret = connection.secret,
+                    threadId = threadId,
+                    turnId = turnId,
+                    text = text,
+                )
+            response.error == null
+        }.getOrElse {
+            Log.w(tag, "turn/steer failed", it)
+            false
+        }
+    }
+
+    private fun enqueueQueuedMessage(threadId: String, text: String) {
+        val queue = queuedMessagesByThread.getOrPut(threadId) { mutableListOf() }
+        queue += QueuedMessageUi(
+            id = "${System.currentTimeMillis()}-${queue.size}",
+            text = text,
+            createdAt = System.currentTimeMillis(),
+        )
+        syncQueuedMessagesForCurrentThread()
+    }
+
+    private fun removeQueuedMessage(threadId: String, messageId: String) {
+        queuedMessagesByThread[threadId]?.removeAll { it.id == messageId }
+        syncQueuedMessagesForCurrentThread()
+    }
+
+    private fun syncQueuedMessagesForCurrentThread() {
+        val threadId = _uiState.value.currentThread?.id
+        val activeQueue =
+            if (threadId == null) emptyList()
+            else queuedMessagesByThread[threadId].orEmpty().toList()
+        _uiState.update {
+            it.copy(
+                queuedMessages = activeQueue,
+                queuePausedReason = queuePausedReason(it),
+            )
+        }
+    }
+
+    private fun queuePausedReason(state: SessionUiState): String? {
+        return when {
+            state.pendingUserInput != null -> "Waiting for a response to the current input request."
+            !state.planReadyTurnId.isNullOrBlank() -> "Waiting for your plan follow-up."
+            else -> null
+        }
+    }
+
+    private fun parseCollaborationModes(result: JsonElement): List<CollaborationModeOptionUi> {
+        val root = result as? JsonObject ?: return emptyList()
+        val payload = (root["result"] as? JsonObject) ?: root
+        val rawModes =
+            listOf("data", "items", "modes")
+                .firstNotNullOfOrNull { key -> payload[key] as? kotlinx.serialization.json.JsonArray }
+                ?: return emptyList()
+        return rawModes.mapNotNull { entry ->
+            val obj = entry as? JsonObject ?: return@mapNotNull null
+            val id = obj["id"]?.toString()?.trim('"').orEmpty().ifBlank {
+                obj["mode"]?.toString()?.trim('"').orEmpty()
+            }
+            if (id.isBlank()) return@mapNotNull null
+            val mode = obj["mode"]?.toString()?.trim('"').orEmpty().ifBlank { id }
+            val label =
+                obj["label"]?.toString()?.trim('"')
+                    ?.takeIf { it.isNotBlank() }
+                    ?: id.replaceFirstChar { it.uppercase() }
+            val developerInstructions =
+                (obj["developerInstructions"] ?: obj["developer_instructions"])
+                    ?.toString()
+                    ?.trim('"')
+            CollaborationModeOptionUi(
+                id = id,
+                mode = mode,
+                label = label,
+                developerInstructions = developerInstructions,
+            )
+        }
+    }
 
     override fun onCleared() {
         observeThreadJob?.cancel()

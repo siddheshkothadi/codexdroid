@@ -9,6 +9,7 @@ import me.siddheshkothadi.codexdroid.codex.EmptyResult
 import me.siddheshkothadi.codexdroid.codex.ThreadReadResult
 import me.siddheshkothadi.codexdroid.codex.ThreadResumeResult
 import me.siddheshkothadi.codexdroid.codex.ThreadStartResult
+import me.siddheshkothadi.codexdroid.codex.TurnSteerResult
 import me.siddheshkothadi.codexdroid.codex.TurnStartResult
 import me.siddheshkothadi.codexdroid.domain.model.Connection
 import me.siddheshkothadi.codexdroid.domain.repository.CodexSessionRepository
@@ -153,11 +154,25 @@ class SessionAndConnectionUseCasesTest {
             error("Not needed in test")
         }
 
+        override suspend fun steerTurn(
+            baseUrl: String,
+            secret: String?,
+            threadId: String,
+            turnId: String,
+            text: String,
+        ): CodexResponse<TurnSteerResult> {
+            error("Not needed in test")
+        }
+
         override suspend fun readThread(baseUrl: String, secret: String?, threadId: String): CodexResponse<ThreadReadResult> {
             error("Not needed in test")
         }
 
         override suspend fun listModels(baseUrl: String, secret: String?): CodexResponse<JsonElement> {
+            error("Not needed in test")
+        }
+
+        override suspend fun listCollaborationModes(baseUrl: String, secret: String?): CodexResponse<JsonElement> {
             error("Not needed in test")
         }
 

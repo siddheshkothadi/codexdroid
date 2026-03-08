@@ -14,8 +14,16 @@ class SessionPreferencesRepositoryImpl @Inject constructor(
         return appSettingsManager.getSessionControlDefaults()
     }
 
-    override suspend fun saveSessionControlDefaults(model: String?, effort: String?) {
-        appSettingsManager.updateSessionControlDefaults(model = model, effort = effort)
+    override suspend fun saveSessionControlDefaults(
+        model: String?,
+        effort: String?,
+        followUpMessageBehavior: String?,
+    ) {
+        appSettingsManager.updateSessionControlDefaults(
+            model = model,
+            effort = effort,
+            followUpMessageBehavior = followUpMessageBehavior,
+        )
     }
 
     override suspend fun getApprovalAllowRules(

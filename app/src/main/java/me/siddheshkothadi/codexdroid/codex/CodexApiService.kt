@@ -110,9 +110,35 @@ class CodexApiService @Inject constructor(
         )
     }
 
+    suspend fun steerTurn(
+        baseUrl: String,
+        secret: String?,
+        threadId: String,
+        turnId: String,
+        text: String,
+    ): CodexResponse<TurnSteerResult> {
+        val client = clientManager.get(baseUrl, secret)
+        val params =
+            TurnSteerParams(
+                threadId = threadId,
+                turnId = turnId,
+                input = listOf(UserInput(text = text)),
+            )
+        return client.send<TurnSteerParams, TurnSteerResult>(
+            CodexRequest("turn/steer", params = params)
+        )
+    }
+
     suspend fun listModels(baseUrl: String, secret: String?): CodexResponse<JsonElement> {
         val client = clientManager.get(baseUrl, secret)
         return client.send<EmptyParams, JsonElement>(CodexRequest("model/list", params = EmptyParams))
+    }
+
+    suspend fun listCollaborationModes(baseUrl: String, secret: String?): CodexResponse<JsonElement> {
+        val client = clientManager.get(baseUrl, secret)
+        return client.send<EmptyParams, JsonElement>(
+            CodexRequest("collaborationMode/list", params = EmptyParams)
+        )
     }
 
     suspend fun listExperimentalFeatures(

@@ -19,12 +19,15 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import me.siddheshkothadi.codexdroid.codex.CodexResponse
+import me.siddheshkothadi.codexdroid.feature.session.ui.FollowUpMessageBehavior
 import me.siddheshkothadi.codexdroid.domain.model.Connection
 import me.siddheshkothadi.codexdroid.domain.model.SarvamTtsSettings
 import me.siddheshkothadi.codexdroid.domain.usecase.GetConnectionsUseCase
 import me.siddheshkothadi.codexdroid.domain.usecase.GetSarvamApiKeyUseCase
+import me.siddheshkothadi.codexdroid.domain.usecase.GetSessionControlDefaultsUseCase
 import me.siddheshkothadi.codexdroid.domain.usecase.ListExperimentalFeaturesUseCase
 import me.siddheshkothadi.codexdroid.domain.usecase.ObserveSarvamTtsSettingsUseCase
+import me.siddheshkothadi.codexdroid.domain.usecase.SaveSessionControlDefaultsUseCase
 import me.siddheshkothadi.codexdroid.domain.usecase.SetRemoteFeatureFlagUseCase
 import me.siddheshkothadi.codexdroid.domain.usecase.UpdateSarvamApiKeyUseCase
 import me.siddheshkothadi.codexdroid.domain.usecase.UpdateSarvamTtsSettingsUseCase
@@ -50,6 +53,7 @@ data class SettingsUiState(
     val featureUpdatingKey: String? = null,
     val stableFeatures: List<CodexFeatureUi> = emptyList(),
     val experimentalFeatures: List<CodexFeatureUi> = emptyList(),
+    val followUpMessageBehavior: FollowUpMessageBehavior = FollowUpMessageBehavior.Queue,
 )
 
 @HiltViewModel
@@ -59,6 +63,8 @@ class SettingsViewModel @Inject constructor(
     private val updateSarvamTtsSettingsUseCase: UpdateSarvamTtsSettingsUseCase,
     private val updateSarvamApiKeyUseCase: UpdateSarvamApiKeyUseCase,
     private val getSarvamApiKeyUseCase: GetSarvamApiKeyUseCase,
+    private val getSessionControlDefaultsUseCase: GetSessionControlDefaultsUseCase,
+    private val saveSessionControlDefaultsUseCase: SaveSessionControlDefaultsUseCase,
     private val listExperimentalFeaturesUseCase: ListExperimentalFeaturesUseCase,
     private val setRemoteFeatureFlagUseCase: SetRemoteFeatureFlagUseCase,
 ) : ViewModel() {
@@ -81,6 +87,19 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val apiKey = getSarvamApiKeyUseCase().orEmpty()
             _uiState.update { it.copy(sarvamApiKeyDraft = apiKey) }
+        }
+        viewModelScope.launch {
+            val defaults = getSessionControlDefaultsUseCase()
+            _uiState.update {
+                it.copy(
+                    followUpMessageBehavior =
+                        if (defaults.followUpMessageBehavior.equals("steer", ignoreCase = true)) {
+                            FollowUpMessageBehavior.Steer
+                        } else {
+                            FollowUpMessageBehavior.Queue
+                        },
+                )
+            }
         }
         viewModelScope.launch {
             getConnectionsUseCase().collectLatest { list ->
@@ -132,6 +151,18 @@ class SettingsViewModel @Inject constructor(
                 delay(350)
                 updateSarvamApiKeyUseCase(value)
             }
+    }
+
+    fun onFollowUpMessageBehaviorChanged(behavior: FollowUpMessageBehavior) {
+        _uiState.update { it.copy(followUpMessageBehavior = behavior) }
+        viewModelScope.launch {
+            val defaults = getSessionControlDefaultsUseCase()
+            saveSessionControlDefaultsUseCase(
+                model = defaults.model,
+                effort = defaults.effort,
+                followUpMessageBehavior = behavior.name.lowercase(),
+            )
+        }
     }
 
     fun refreshCodexFeatures() {

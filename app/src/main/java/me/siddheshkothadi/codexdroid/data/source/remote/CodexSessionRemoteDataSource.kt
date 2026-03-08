@@ -7,6 +7,7 @@ import me.siddheshkothadi.codexdroid.codex.EmptyResult
 import me.siddheshkothadi.codexdroid.codex.ThreadReadResult
 import me.siddheshkothadi.codexdroid.codex.ThreadResumeResult
 import me.siddheshkothadi.codexdroid.codex.ThreadStartResult
+import me.siddheshkothadi.codexdroid.codex.TurnSteerResult
 import me.siddheshkothadi.codexdroid.codex.TurnStartResult
 import me.siddheshkothadi.codexdroid.domain.model.Connection
 import javax.inject.Inject
@@ -49,6 +50,16 @@ class CodexSessionRemoteDataSource @Inject constructor(
         return apiService.startTurn(baseUrl, secret, threadId, text, cwd, model, effort, collaborationMode)
     }
 
+    suspend fun steerTurn(
+        baseUrl: String,
+        secret: String?,
+        threadId: String,
+        turnId: String,
+        text: String,
+    ): CodexResponse<TurnSteerResult> {
+        return apiService.steerTurn(baseUrl, secret, threadId, turnId, text)
+    }
+
     suspend fun readThread(
         baseUrl: String,
         secret: String?,
@@ -59,6 +70,10 @@ class CodexSessionRemoteDataSource @Inject constructor(
 
     suspend fun listModels(baseUrl: String, secret: String?): CodexResponse<JsonElement> {
         return apiService.listModels(baseUrl, secret)
+    }
+
+    suspend fun listCollaborationModes(baseUrl: String, secret: String?): CodexResponse<JsonElement> {
+        return apiService.listCollaborationModes(baseUrl, secret)
     }
 
     suspend fun listExperimentalFeatures(

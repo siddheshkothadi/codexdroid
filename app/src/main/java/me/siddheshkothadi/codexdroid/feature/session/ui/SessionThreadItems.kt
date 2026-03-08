@@ -96,6 +96,7 @@ fun ThreadItemBubble(item: ThreadItem) {
                 }
                 is ThreadItem.Reasoning -> ReasoningItem(item)
                 is ThreadItem.PlanUpdate -> PlanUpdateItem(item)
+                is ThreadItem.Plan -> PlanItem(item)
                 is ThreadItem.CommandExecution -> CommandExecutionItem(item)
                 is ThreadItem.McpToolCall -> McpToolCallItem(item)
                 is ThreadItem.FileChange -> FileChangeItem(item)
@@ -277,6 +278,30 @@ fun PlanUpdateItem(item: ThreadItem.PlanUpdate) {
             val marker = if (entry.status == PlanEntryStatus.completed) "✔ " else "□ "
             val prefix = if (entry.status == PlanEntryStatus.completed) "    " else "  └ "
             TranscriptLine(text = "$prefix$marker$step")
+        }
+    }
+}
+
+@Composable
+fun PlanItem(item: ThreadItem.Plan) {
+    TranscriptSurface {
+        val normalizedStatus = item.status.trim()
+        val heading =
+            if (normalizedStatus.isBlank()) {
+                "• Plan"
+            } else {
+                "• Plan ($normalizedStatus)"
+            }
+        TranscriptLine(text = heading, color = CodexTheme.colors.textSecondary)
+        val textLines = item.text.lines().map { it.trimEnd() }.filter { it.isNotBlank() }
+        if (textLines.isEmpty()) {
+            TranscriptLine(text = "  └ (no details provided)")
+            return@TranscriptSurface
+        }
+        textLines.forEachIndexed { index, line ->
+            TranscriptLine(
+                text = if (index == 0) "  └ $line" else "    $line",
+            )
         }
     }
 }

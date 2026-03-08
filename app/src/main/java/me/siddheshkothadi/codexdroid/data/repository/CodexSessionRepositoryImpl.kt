@@ -6,6 +6,7 @@ import me.siddheshkothadi.codexdroid.codex.EmptyResult
 import me.siddheshkothadi.codexdroid.codex.ThreadReadResult
 import me.siddheshkothadi.codexdroid.codex.ThreadResumeResult
 import me.siddheshkothadi.codexdroid.codex.ThreadStartResult
+import me.siddheshkothadi.codexdroid.codex.TurnSteerResult
 import me.siddheshkothadi.codexdroid.codex.TurnStartResult
 import me.siddheshkothadi.codexdroid.data.source.remote.CodexSessionRemoteDataSource
 import me.siddheshkothadi.codexdroid.domain.model.Connection
@@ -46,12 +47,26 @@ class CodexSessionRepositoryImpl @Inject constructor(
         return remoteDataSource.startTurn(baseUrl, secret, threadId, text, cwd, model, effort, collaborationMode)
     }
 
+    override suspend fun steerTurn(
+        baseUrl: String,
+        secret: String?,
+        threadId: String,
+        turnId: String,
+        text: String,
+    ): CodexResponse<TurnSteerResult> {
+        return remoteDataSource.steerTurn(baseUrl, secret, threadId, turnId, text)
+    }
+
     override suspend fun readThread(baseUrl: String, secret: String?, threadId: String): CodexResponse<ThreadReadResult> {
         return remoteDataSource.readThread(baseUrl, secret, threadId)
     }
 
     override suspend fun listModels(baseUrl: String, secret: String?): CodexResponse<JsonElement> {
         return remoteDataSource.listModels(baseUrl, secret)
+    }
+
+    override suspend fun listCollaborationModes(baseUrl: String, secret: String?): CodexResponse<JsonElement> {
+        return remoteDataSource.listCollaborationModes(baseUrl, secret)
     }
 
     override suspend fun listExperimentalFeatures(

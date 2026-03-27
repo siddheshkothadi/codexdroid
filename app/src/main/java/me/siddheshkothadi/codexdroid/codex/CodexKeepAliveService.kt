@@ -108,7 +108,7 @@ class CodexKeepAliveService : Service() {
             )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_stat_codex)
             .setContentTitle("Codex is connected")
             .setContentText("Keeping your Codex session active.")
             .setOngoing(true)

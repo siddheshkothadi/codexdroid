@@ -14,7 +14,8 @@ import androidx.core.graphics.drawable.toBitmap
 import me.siddheshkothadi.codexdroid.R
 
 object CodexDroidNotifications {
-    const val TURN_CHANNEL_ID = "turn_events"
+    // Use a versioned channel ID because Android preserves existing channel settings by ID.
+    const val TURN_CHANNEL_ID = "turn_events_v2"
 
     fun canPostNotifications(context: Context): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
